@@ -1,4 +1,4 @@
-# ship — a senior-engineer workflow for Claude Code
+# ship: a senior-engineer workflow for Claude Code
 
 > **ship turns an ordinary engineering request into a verified, independently reviewed change — without you orchestrating a single agent.**
 
