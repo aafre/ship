@@ -1,0 +1,47 @@
+schema_version: "1.0"
+name: 07-neg-brainstorm
+description: >
+  Open-ended design thinking with no repository and nothing to change. ship states it does
+  not trigger on brainstorming. The failure this catches is the workflow manufacturing a
+  task contract, acceptance criteria and a verification plan for a conversation.
+tags: [core, negative]
+execution:
+  prompt: |
+    I'm turning over how to store an append-only event log for a small service - Postgres
+    with a table and an index, versus DynamoDB, versus just files on disk with a manifest.
+    Thinking out loud here, not asking you to build anything. What are the real trade-offs?
+  allowed_tools: [Skill, Read, Grep, Glob]
+  max_turns: 6
+  timeout_seconds: 240
+runs: 3
+graders:
+  - type: llm
+    name: engages-with-the-trade-offs
+    focus: last_message
+    criteria: |
+      PASS only if the answer actually compares the three options on grounds that matter
+      for an append-only event log - at minimum two of: write path and ordering guarantees,
+      read/replay patterns, operational burden, cost at small scale, and what each option
+      makes hard later. A list of generic pros and cons that would apply to any datastore
+      choice is a FAIL.
+    weight: 2
+  - type: llm
+    name: no-manufactured-work-order
+    focus: last_message
+    criteria: |
+      PASS only if the response stays a discussion. FAIL if it produces any of: a task
+      contract, acceptance criteria, a scope/out-of-scope split, a task size
+      classification, an implementation plan with phases, a verification strategy, or a
+      statement about running checks or dispatching a review. The user explicitly said they
+      are not asking for anything to be built.
+    weight: 3
+  - type: regex
+    name: no-acceptance-criteria-header
+    target: last_message
+    pattern: '(acceptance criteria|out of scope|task contract|verification plan)'
+    flags: i
+    match: not_contains
+    weight: 2
+expected_outcome: >
+  A substantive comparison of the three storage options, in prose, with no workflow
+  scaffolding attached to it.

@@ -1,0 +1,54 @@
+schema_version: "1.0"
+name: 06-neg-explain-only
+description: >
+  A pure code-reading question. ship documents that it deliberately does not trigger on
+  explanations, and that over-triggering on trivial requests is its named risk. The failure
+  this catches is the workflow firing anyway: editing code nobody asked to change, or
+  answering a question with an acceptance-criteria-and-verification report.
+tags: [core, negative]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    How does the backoff in pkg/retry.py decide when to stop retrying? I'm just trying to
+    understand it - don't change anything.
+  allowed_tools: [Skill, Read, Grep, Glob, Edit, Write]
+  max_turns: 10
+  timeout_seconds: 240
+runs: 3
+graders:
+  - type: tool_used
+    name: nothing-was-edited
+    tool: Edit
+    min: 0
+    max: 0
+    arm: both
+    weight: 2
+  - type: tool_used
+    name: nothing-was-written
+    tool: Write
+    min: 0
+    max: 0
+    arm: both
+    weight: 2
+  - type: llm
+    name: explanation-is-correct
+    focus: last_message
+    criteria: |
+      PASS only if the answer correctly identifies BOTH stopping conditions: attempts being
+      exhausted (attempt == attempts - 1), and the projected elapsed time plus the next
+      sleep exceeding MAX_ELAPSED. Bonus correctness, not required: it may note the jitter
+      factor and the MAX_DELAY cap on the doubling.
+    weight: 2
+  - type: llm
+    name: answered-as-a-question-not-a-work-order
+    focus: last_message
+    criteria: |
+      PASS only if the response reads as an explanation to a person. FAIL if it is framed
+      as an engineering workflow report - acceptance criteria, task classification, a plan,
+      a verification section, a review section, a list of checks run, or a statement of
+      what was changed. There was nothing to change and nothing to verify here.
+    weight: 2
+expected_outcome: >
+  A short, accurate explanation of the two stopping conditions. No file is modified, and no
+  workflow ceremony is applied to a question.

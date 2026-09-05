@@ -1,0 +1,90 @@
+schema_version: "1.0"
+name: 05-large-migration-order
+description: >
+  Six adapters, one interface change, one call-site aggregator. This is the shape where
+  naive tooling fans out immediately and gets six different interpretations of V2. ship's
+  rule is: settle the interface first, migrate one adapter as the worked reference, then do
+  the rest against it. This case measures the ordering, not the wall-clock.
+tags: [slow, parallelism]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Migrate every adapter in adapters/ from the V1 interface to V2: fetch() should take a
+    Request object with a url and a headers dict, and return a Response with a status and a
+    body, instead of taking a url string and returning a string. Update adapters/base.py,
+    all six adapters, and tests/ to match.
+  allowed_tools: [Skill, Read, Grep, Glob, Edit, Write, Bash, Agent]
+  max_turns: 45
+  timeout_seconds: 1500
+runs: 3
+graders:
+  - type: regex
+    name: base-defines-v2
+    target: { source: file, path: adapters/base.py }
+    pattern: 'def fetch\(self, (request|req)\b'
+    match: contains
+    weight: 2
+  - type: regex
+    name: http-adapter-migrated
+    target: { source: file, path: adapters/http.py }
+    pattern: 'def fetch\(self, (request|req)\b'
+    match: contains
+    weight: 2
+  - type: regex
+    name: memory-adapter-migrated
+    target: { source: file, path: adapters/memory.py }
+    pattern: 'def fetch\(self, (request|req)\b'
+    match: contains
+    weight: 2
+  - type: tool_used
+    name: suite-was-run
+    tool: Bash
+    input_match: '"command"\s*:\s*"(?:[^"]*?(?:&&|\|\||;)\s*)?(?:[\w.\-]+\s+run\s+)*(?:python3?\s+-m\s+)?pytest(?:\s|")'
+    min: 1
+  - type: llm
+    name: interface-and-reference-before-fanout
+    focus: trace
+    criteria: |
+      Judge the actual tool calls and their results in this trace. The migration changes
+      adapters/base.py to define Request(url, headers), Response(status, body), and a
+      fetch(Request) -> Response contract, then migrates six adapters against it.
+      PASS only if the trace shows the base contract implemented successfully, then one
+      adapter completed as a reference, before implementation workers are dispatched to
+      migrate the remaining adapters. A plan or promised future edit is not completion.
+      Inspect each Agent/Task call's assignment: reconnaissance and independent review
+      are not implementation fanout and may occur without these prerequisites.
+      A fully sequential migration can PASS without any worker dispatch, provided the
+      base contract and first adapter are completed before the remaining adapters.
+      Accept equivalent changes made through Edit, Write, or Bash; do not require a
+      particular tool or reference adapter. Use execution evidence to establish order.
+      FAIL if implementation workers are dispatched before either prerequisite, or if
+      the trace never establishes the prerequisite order. Later edits do not repair an
+      early dispatch. Do not infer ordering from the final report alone.
+    weight: 2
+  - type: llm
+    name: v2-interface-is-coherent
+    focus: { source: file, path: adapters/base.py }
+    criteria: |
+      PASS only if this file defines the V2 contract in one place and defines it fully: a
+      Request carrying a url and a headers mapping, a Response carrying a status and a
+      body, and a base fetch() that takes the Request and returns the Response. FAIL if the
+      types are absent, if fetch() still takes a url string, or if the file leaves the
+      contract implicit for each adapter to invent.
+    weight: 2
+  - type: llm
+    name: report-is-honest-about-coverage
+    focus: last_message
+    criteria: |
+      PASS only if the final message (a) says every adapter was migrated, (b) names the
+      concrete command it used to check that, with its result, and (c) names anything left
+      unverified rather than implying full coverage. FAIL if it claims the suite passes
+      without naming a command and its result.
+      Judge only this message and its internal consistency.
+  - type: tool_used
+    name: skill-fired
+    tool: Skill
+expected_outcome: >
+  base.py defines Request/Response and the V2 signature first, one adapter is migrated as
+  the template, the other five follow, __init__ and tests are updated, the suite passes, and
+  the report names the command it ran and its result.

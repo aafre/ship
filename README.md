@@ -77,9 +77,11 @@ reaches those phases. That is what progressive disclosure buys, and it is why th
 afford to be opinionated in depth without taxing every trivial request.
 
 **What is *not* proven yet:** no head-to-head defect-detection benchmark against a bare
-agent, no token-usage measurement across a task corpus. Those need an eval harness that
-doesn't exist here. See [Project status](#project-status). Claims in this README are limited
-to what the files themselves demonstrate.
+agent, no token-usage measurement across a task corpus. The eval suite that would measure
+the first of those now exists in [`evals/`](evals/) — seven cases, each run with and without
+the plugin so the headline number is uplift — but it has not been run yet: `claude plugin
+eval` is in early access. See [Project status](#project-status). Claims in this README are
+limited to what the files themselves demonstrate.
 
 ---
 
@@ -89,11 +91,13 @@ Two files' worth of copying, no install step, no dependencies.
 
 ```bash
 git clone https://github.com/aafre/ship.git
+mkdir -p your-project/.claude/skills your-project/.claude/agents
 cp -r ship/.claude/skills/ship   your-project/.claude/skills/
 cp    ship/.claude/agents/ship-*.md  your-project/.claude/agents/
 ```
 
-For every project instead of one, copy into `~/.claude/` rather than the project.
+For every project instead of one, create `~/.claude/skills/` and `~/.claude/agents/` first,
+then use those directories as the copy destinations.
 
 Then, in Claude Code:
 
@@ -308,8 +312,8 @@ such until an eval harness measures them.
   installing this.
 - **No executable payload.** No scripts, no post-install hooks, no dependencies to audit —
   `.claude/` is seven Markdown files, and they're short enough to read end to end.
-- **`ship-reviewer` is scoped** to `Read, Grep, Glob, Bash` — it cannot edit files. Review
-  and implementation stay separate by tool grant, not by instruction alone.
+- **`ship-reviewer` is instructed not to modify files**, and is scoped to `Read, Grep, Glob,
+  Bash`; this is an instruction, not a filesystem guarantee, because Bash can write files.
 - **`ship-verifier` is instructed not to modify source**, and is scoped to verification and
   browser tools. Note this one is an instruction, not a tool-level guarantee: it holds `Bash`,
   which it needs to run your test commands.
@@ -335,6 +339,9 @@ such until an eval harness measures them.
 └── agents/
     ├── ship-reviewer.md      independent fresh-context reviewer (read-only tools)
     └── ship-verifier.md      behavioural verifier (repo commands + browser)
+.claude-plugin/
+└── plugin.json               makes the repo installable, and resolvable as an eval target
+evals/                        7 behavioural cases + validate.py — see evals/README.md
 ```
 
 ---
@@ -371,11 +378,12 @@ that's CI's job, and ship is designed to arrive at CI with the checks already gr
 | `ship-reviewer`, `ship-verifier` | stable |
 | Progressive disclosure across 4 references | stable |
 | Parallelism / worktree guidance | written, lightly exercised |
-| Eval harness + published benchmarks | **not built** |
+| Eval suite ([`evals/`](evals/), 7 cases, with/without ablation) | **written, not yet run** — blocked on `claude plugin eval` early access |
+| Published benchmark numbers | **not built** |
 | Design-scenario coverage | walked through 7 scenarios (trivial fix, feature, security-sensitive change, parallelizable migration, non-parallelizable refactor, reviewer false positive, context pressure) — a design review, not an empirical result |
 
 **Roadmap, in order of usefulness:**
-1. An eval suite over the seven scenarios, so the behavioural claims become measured claims.
+1. Pilot and calibrate the suite in [`evals/`](evals/), so the behavioural claims become measured claims.
 2. Defect-detection comparison against a bare agent on a seeded-bug corpus.
 3. Token-usage measurement per task class.
 4. A worked LARGE example in a real multi-package repo.

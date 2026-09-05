@@ -101,7 +101,7 @@ Large output is a context leak. Filter at the source:
 ```
 pytest -q --tb=short                    # not -v, not full tracebacks
 npm test 2>&1 | tail -40
-go test ./... 2>&1 | grep -E '^(---|FAIL|ok)' | head -40
+go test ./... 2>&1 | tail -40
 cargo test 2>&1 | tail -30
 make check 2>&1 | tail -50
 git diff --stat
@@ -110,7 +110,10 @@ rg -n 'pattern' --glob '!**/node_modules/**'
 ```
 
 When a suite fails, read the *first* failure in detail and ignore the cascade. When output is
-genuinely large and needed, redirect to a scratch file and grep it rather than reading it in.
+genuinely large and needed, redirect to a task-specific scratch file and inspect it rather
+than reading it all in. For Go, retain the complete output: filtering only `---`, `FAIL`,
+and `ok` lines discards compiler errors and panic details. The Go example uses a unique
+scratch file and reports both the command's status and where to inspect its full output.
 
 ### Honest coverage
 

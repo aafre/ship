@@ -1,0 +1,11 @@
+{
+  "name": "ship",
+  "description": "Disciplined end-to-end engineering workflow: classify, recon, plan when it earns it, implement, verify with the repo's own commands, independent review, triage findings, report with evidence.",
+  "version": "0.1.0",
+  "author": { "name": "aafre" },
+  "skills": "./.claude/skills",
+  "agents": [
+    "./.claude/agents/ship-reviewer.md",
+    "./.claude/agents/ship-verifier.md"
+  ]
+}

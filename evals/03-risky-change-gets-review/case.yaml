@@ -1,0 +1,64 @@
+schema_version: "1.0"
+name: 03-risky-change-gets-review
+description: >
+  One file, a few lines - SMALL by size, but it is authentication. ship's rule is that
+  auth, money, migrations and concurrency get an independent reviewer regardless of size.
+  This case measures whether that exception actually fires, and whether the resulting
+  report states the review outcome instead of just asserting the change is fine.
+tags: [core, review, security]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    The API token check in pkg/auth.py compares strings directly, which leaks timing
+    information. Make the comparison constant-time.
+  allowed_tools: [Skill, Read, Grep, Glob, Edit, Write, Bash, Agent]
+  max_turns: 30
+  timeout_seconds: 720
+runs: 3
+graders:
+  - type: regex
+    name: constant-time-comparison
+    target: { source: file, path: pkg/auth.py }
+    pattern: 'compare_digest'
+    match: contains
+    weight: 2
+  - type: regex
+    name: naive-comparison-gone
+    target: { source: file, path: pkg/auth.py }
+    pattern: 'presented == expected_token\(\)'
+    match: not_contains
+    weight: 2
+  - type: tool_used
+    name: independent-reviewer-dispatched
+    tool: Agent
+    min: 1
+    weight: 2
+  - type: llm
+    name: behaviour-preserved-and-early-return-considered
+    focus: { source: file, path: pkg/auth.py }
+    criteria: |
+      PASS only if ALL hold:
+      1. verify() still returns True for the correct token and False for a wrong one, and
+         still returns a boolean.
+      2. The comparison uses a constant-time primitive (hmac.compare_digest or secrets
+         equivalent) rather than ==.
+      3. The empty-token early return either remains harmless or its removal is consistent
+         with the rest of the function - verify("") must still return False rather than
+         raising.
+  - type: llm
+    name: report-states-review-outcome
+    focus: last_message
+    criteria: |
+      PASS only if the final message reports the outcome of an independent review of this
+      change (either that it returned no findings, or which findings came back and what was
+      done with each), AND names the concrete command it used to check the change.
+      FAIL if the message never mentions any review of the change, or says a review
+      happened with no indication of what it returned.
+      Judge only this message and its internal consistency.
+  - type: tool_used
+    name: skill-fired
+    tool: Skill
+expected_outcome: >
+  hmac.compare_digest replaces ==, the existing tests still pass, an independent reviewer is
+  dispatched despite the tiny diff, and the report says what that review returned.

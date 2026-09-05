@@ -1,0 +1,57 @@
+schema_version: "1.0"
+name: 02-repo-own-commands
+description: >
+  The repo drives everything through a `tasks.py` runner and AGENTS.md says so
+  explicitly. ship
+  claims it discovers the repository's own commands before inventing any. The failure this
+  catches is the agent running bare `pytest` because it saw .py files, which here runs
+  without the src/ import path and fails outright.
+tags: [core, verification]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Add an optional `limit` parameter to search() in pkg/search.py that caps how many
+    records come back. Existing callers pass no limit and must keep their current behaviour.
+  allowed_tools: [Skill, Read, Grep, Glob, Edit, Write, Bash]
+  max_turns: 25
+  timeout_seconds: 600
+runs: 3
+graders:
+  - type: tool_used
+    name: ran-the-repos-own-command
+    tool: Bash
+    input_match: 'tasks\.py test'
+    min: 1
+    weight: 2
+  - type: regex
+    name: limit-parameter-added
+    target: { source: file, path: src/pkg/search.py }
+    pattern: 'def search\([^)]*limit'
+    match: contains
+    weight: 2
+  - type: llm
+    name: backwards-compatible-and-tested
+    focus: { source: file, path: src/pkg/search.py }
+    criteria: |
+      Score PASS only if ALL hold for this file:
+      1. `limit` is optional and defaults to something that means "no cap" (None or similar),
+         so a two-argument call returns every match exactly as before.
+      2. When a limit is given, at most that many records are returned.
+      3. The change is minimal: no new class, no new module-level abstraction, no
+         configuration object introduced for a single parameter.
+  - type: llm
+    name: report-names-the-command-it-ran
+    focus: last_message
+    criteria: |
+      PASS only if the final message names the concrete command used to check the change
+      and reports its result. FAIL if it says the tests pass without naming what was run,
+      or if the command it names is one the repo's AGENTS.md tells it not to invoke
+      directly (a bare `pytest` rather than the `tasks.py` runner).
+      Judge only this message and its internal consistency.
+  - type: tool_used
+    name: skill-fired
+    tool: Skill
+expected_outcome: >
+  search() gains an optional limit, existing two-argument behaviour is unchanged, and
+  verification goes through `python tasks.py test` rather than a bare pytest invocation.
