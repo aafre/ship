@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RunState, Task, TaskGraph } from "./types.js";
 
@@ -57,18 +57,42 @@ export interface Lock {
   fd: number;
 }
 
-/** Acquires an exclusive lock file in runDir. Throws if already held. */
+/** True if a process with this pid still exists. A Ctrl-C/crash leaves a pid nothing owns any more. */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createLockFile(lockPath: string): Lock {
+  const fd = openSync(lockPath, "wx");
+  writeSync(fd, String(process.pid));
+  return { path: lockPath, fd };
+}
+
+/**
+ * Acquires an exclusive lock file in runDir, reclaiming one left behind by a
+ * process that crashed or was killed without releasing it — never one still
+ * owned by a live process.
+ */
 export function acquireLock(runDir: string): Lock {
   mkdirSync(runDir, { recursive: true });
   const lockPath = join(runDir, ".lock");
   try {
-    const fd = openSync(lockPath, "wx");
-    return { path: lockPath, fd };
+    return createLockFile(lockPath);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
-      throw new Error(`run is locked: ${lockPath} already exists`);
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+
+    const ownerPid = Number(readFileSync(lockPath, "utf8").trim());
+    if (Number.isInteger(ownerPid) && isProcessAlive(ownerPid)) {
+      throw new Error(`run is locked: ${lockPath} is held by running process ${ownerPid}`);
     }
-    throw err;
+
+    unlinkSync(lockPath); // stale: the owning process is gone
+    return createLockFile(lockPath);
   }
 }
 

@@ -37,6 +37,11 @@ test("a medium/large plan writes plan.md, launch-tasks.md, and tasks.json from o
 
   const savedGraph = JSON.parse(readFileSync(result.tasksJsonPath, "utf8")) as TaskGraph;
   assert.deepEqual(savedGraph, graph);
+
+  const revisionPath = join(result.planDir, "revision.json");
+  assert.ok(existsSync(revisionPath), "ship run needs this sibling file to bind approval");
+  const savedRevision = JSON.parse(readFileSync(revisionPath, "utf8")) as { revisionHash: string };
+  assert.equal(savedRevision.revisionHash, result.revisionHash);
 });
 
 test("the rendered diagram's nodes are exactly the tasks.json nodes", () => {

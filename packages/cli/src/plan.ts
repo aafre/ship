@@ -141,9 +141,15 @@ export function writePlan(plansRoot: string, runId: string, input: PlanInput): P
   const launchTasksPath = join(planDir, "launch-tasks.md");
   const tasksJsonPath = join(planDir, "tasks.json");
 
+  const hash = revisionHash(input);
+
   writeFileSync(planPath, renderPlanMarkdown(input));
   writeFileSync(launchTasksPath, renderLaunchTasksMarkdown(input));
   writeFileSync(tasksJsonPath, JSON.stringify(input.graph, null, 2));
+  // A sibling of tasks.json, not tasks.json itself: `ship run` reads this to
+  // bind approval (plan §4) without needing to re-derive the hash from a
+  // graph it can't be sure matches what was actually reviewed.
+  writeFileSync(join(planDir, "revision.json"), JSON.stringify({ revisionHash: hash }, null, 2));
 
   return {
     size: input.size,
@@ -151,6 +157,6 @@ export function writePlan(plansRoot: string, runId: string, input: PlanInput): P
     planPath,
     launchTasksPath,
     tasksJsonPath,
-    revisionHash: revisionHash(input),
+    revisionHash: hash,
   };
 }

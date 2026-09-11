@@ -39,11 +39,18 @@ test("writeState is atomic: a temp file left behind by a simulated crash does no
 test("acquireLock fails on a second acquire while the first is held", () => {
   const dir = tempDir();
   const lock = acquireLock(dir);
-  assert.throws(() => acquireLock(dir), /already exists/);
+  assert.throws(() => acquireLock(dir), /held by running process/);
   releaseLock(lock);
   // Released lock can be re-acquired.
   const lock2 = acquireLock(dir);
   releaseLock(lock2);
+});
+
+test("acquireLock reclaims a lock left behind by a process that no longer exists (crash/Ctrl-C)", () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, ".lock"), "999999999"); // a pid nothing on this machine has
+  const lock = acquireLock(dir); // must not throw "already exists" forever
+  releaseLock(lock);
 });
 
 test("readState rejects malformed JSON before returning anything usable", () => {

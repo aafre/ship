@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -11,10 +11,20 @@ import { createGitIntegration } from "./git.js";
 import { writePlan } from "./plan.js";
 import type { PlanInput } from "./plan.js";
 import { run } from "./run.js";
-import { readState } from "./state.js";
+import { readState, validateGraph } from "./state.js";
 import type { Profile, RunState, TaskGraph } from "./types.js";
 import { runCheck } from "./verify.js";
 import type { Task } from "./types.js";
+
+/** The revision hash `ship plan` recorded alongside tasksPath, if any (plan.ts's writePlan). */
+export function readPlanRevisionHash(tasksPath: string): string | undefined {
+  const revisionPath = join(dirname(tasksPath), "revision.json");
+  try {
+    return (JSON.parse(readFileSync(revisionPath, "utf8")) as { revisionHash: string }).revisionHash;
+  } catch {
+    return undefined; // hand-written tasks.json with no plan behind it — nothing to bind approval to
+  }
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -79,6 +89,7 @@ async function main(argv: string[]): Promise<number> {
     }
     const repoRoot = process.cwd();
     const graph = JSON.parse(readFileSync(tasksPath, "utf8")) as TaskGraph;
+    validateGraph(graph); // a hand-edited tasks.json (e.g. answering a blocked question) gets the same check `ship plan` ran
     const config = loadEffectiveConfig(repoRoot);
     const profile: Profile = { version: 1, runtime: "claude", model: config.models.implementer ?? "sonnet" };
     const git = createGitIntegration({
@@ -89,16 +100,40 @@ async function main(argv: string[]): Promise<number> {
       runAffectedChecks: makeAffectedChecksRunner(repoRoot),
     });
 
-    const state = await run({
-      runId: basename(runDir),
-      graph,
-      runDir,
-      cwd: repoRoot,
-      profile,
-      adapter: claude,
-      resolveCwd: git.resolveCwd,
-      verify: git.verify,
-    });
+    const abortController = new AbortController();
+    const runId = basename(runDir);
+    const onSigint = () => {
+      // Stop workers, don't just abandon them: cancel every session this run
+      // dispatched, then let run() finish its current cycle and write state.
+      try {
+        const currentState = readState(join(runDir, "state.json"));
+        for (const runtime of Object.values(currentState.tasks)) {
+          if (runtime.status === "running" && runtime.sessionId) claude.cancel(runtime.sessionId);
+        }
+      } catch {
+        // no state written yet (killed before the first cycle) — nothing to cancel
+      }
+      abortController.abort();
+    };
+    process.once("SIGINT", onSigint);
+
+    let state: RunState;
+    try {
+      state = await run({
+        runId,
+        graph,
+        runDir,
+        cwd: repoRoot,
+        profile,
+        adapter: claude,
+        resolveCwd: git.resolveCwd,
+        verify: git.verify,
+        planRevisionHash: readPlanRevisionHash(tasksPath),
+        signal: abortController.signal,
+      });
+    } finally {
+      process.removeListener("SIGINT", onSigint);
+    }
     console.log(formatStatus(state));
     return 0;
   }
