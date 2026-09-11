@@ -64,9 +64,9 @@ Every number below is reproducible from the repo in one command.
 
 | Metric | Value | How to reproduce |
 |---|---:|---|
-| Loaded on every trigger (`SKILL.md`) | **12.8 KB** | `wc -c .claude/skills/ship/SKILL.md` |
-| Loaded **only when a phase needs it** (4 references) | **21.7 KB** | `wc -c .claude/skills/ship/references/*.md` |
-| Deferred share of skill text | **63%** | ratio of the two above |
+| Loaded on every trigger (`SKILL.md`) | **13.9 KB** | `wc -c .claude/skills/ship/SKILL.md` |
+| Loaded **only when a phase needs it** (5 references) | **26.5 KB** | `wc -c .claude/skills/ship/references/*.md` |
+| Deferred share of skill text | **66%** | ratio of the two above |
 | Reviewer / verifier context | **separate** | own agent, own window — never inherits the transcript |
 | Runtime dependencies | **0** | no scripts, no install, no language assumptions |
 | Frontmatter validation | **passes** | `python skill-creator/scripts/quick_validate.py .claude/skills/ship` |
@@ -78,7 +78,7 @@ afford to be opinionated in depth without taxing every trivial request.
 
 **What is *not* proven yet:** no head-to-head defect-detection benchmark against a bare
 agent, no token-usage measurement across a task corpus. The eval suite that would measure
-the first of those now exists in [`evals/`](evals/) — seven cases, each run with and without
+the first of those now exists in [`evals/`](evals/) — ten cases, each run with and without
 the plugin so the headline number is uplift — but it has not been run yet: `claude plugin
 eval` is in early access. See [Project status](#project-status). Claims in this README are
 limited to what the files themselves demonstrate.
@@ -310,8 +310,11 @@ such until an eval harness measures them.
 - **Nothing leaves your machine.** The skill is Markdown. There is no telemetry, no network
   call, no phone-home. Whatever your Claude Code installation already sends is unchanged by
   installing this.
-- **No executable payload.** No scripts, no post-install hooks, no dependencies to audit —
-  `.claude/` is seven Markdown files, and they're short enough to read end to end.
+- **No executable payload in the skill itself.** No scripts, no post-install hooks, no
+  dependencies to audit — `.claude/` is nine Markdown files, generated from `skills/ship/`
+  (see [Repository layout](#repository-layout)), and short enough to read end to end. The
+  optional `packages/cli/` companion (v0.2, in progress) is real TypeScript with no runtime
+  dependencies of its own — audit it the way you'd audit any small Node CLI.
 - **`ship-reviewer` is instructed not to modify files**, and is scoped to `Read, Grep, Glob,
   Bash`; this is an instruction, not a filesystem guarantee, because Bash can write files.
 - **`ship-verifier` is instructed not to modify source**, and is scoped to verification and
@@ -327,21 +330,32 @@ such until an eval harness measures them.
 ## Repository layout
 
 ```
-.claude/
-├── skills/ship/
-│   ├── SKILL.md              core workflow + task classification (always loaded on trigger)
-│   ├── README.md             skill-local docs
-│   └── references/           progressive disclosure — loaded per phase, not up front
-│       ├── task-contract.md    contract fields, inference rules, persistence, resuming
-│       ├── review-contract.md  reviewer briefing, P0–P3 ladder, triage, specialist routing
-│       ├── workflow-rules.md   implementation, verification, and completion detail
-│       └── parallelism.md      the fan-out test, DAG, work contracts, worktrees, integration
+skills/ship/                  canonical source — edit here, never under .claude/ directly
+├── SKILL.md                  core workflow + task classification (always loaded on trigger)
+├── README.md                 skill-local docs
+├── agents/
+│   ├── ship-reviewer.md      independent fresh-context reviewer (read-only tools)
+│   └── ship-verifier.md      behavioural verifier (repo commands + browser)
+└── references/                progressive disclosure — loaded per phase, not up front
+    ├── task-contract.md        contract fields, inference rules, persistence, resuming
+    ├── review-contract.md      reviewer briefing, P0–P3 ladder, triage, specialist routing
+    ├── verifier-contract.md    capability-aware verification model, evidence, failure classes
+    ├── workflow-rules.md       implementation, verification, completion, and coding-contract detail
+    └── parallelism.md          the fan-out test, DAG, work contracts, worktrees, integration
+
+.claude/                      generated copy — `cd packages/cli && npm run build:integrations`
+├── skills/ship/               regenerates this from skills/ship/; check:drift catches hand-edits
 └── agents/
-    ├── ship-reviewer.md      independent fresh-context reviewer (read-only tools)
-    └── ship-verifier.md      behavioural verifier (repo commands + browser)
 .claude-plugin/
-└── plugin.json               makes the repo installable, and resolvable as an eval target
-evals/                        7 behavioural cases + validate.py — see evals/README.md
+└── plugin.json                also generated; makes the repo installable and eval-resolvable
+
+packages/cli/                 v0.2, in progress: TypeScript CLI (`ship plan|run|status`), no
+                               runtime dependencies. Adapters for Claude/Codex, git worktree +
+                               integrate-branch delivery, capability-aware verification. See
+                               docs/ship-v0.2/plan.md. SKILL.md routes through it when built,
+                               falls back to the v0.1 prompt-only path otherwise.
+
+evals/                        10 behavioural cases + validate.py — see evals/README.md
 ```
 
 ---
@@ -376,17 +390,19 @@ that's CI's job, and ship is designed to arrive at CI with the checks already gr
 |---|---|
 | Core workflow (classify → recon → implement → verify → review → triage → report) | stable |
 | `ship-reviewer`, `ship-verifier` | stable |
-| Progressive disclosure across 4 references | stable |
+| Progressive disclosure across 5 references | stable |
 | Parallelism / worktree guidance | written, lightly exercised |
-| Eval suite ([`evals/`](evals/), 7 cases, with/without ablation) | **written, not yet run** — blocked on `claude plugin eval` early access |
+| Eval suite ([`evals/`](evals/), 10 cases, with/without ablation) | **written, not yet run** — blocked on `claude plugin eval` early access |
 | Published benchmark numbers | **not built** |
 | Design-scenario coverage | walked through 7 scenarios (trivial fix, feature, security-sensitive change, parallelizable migration, non-parallelizable refactor, reviewer false positive, context pressure) — a design review, not an empirical result |
+| `packages/cli/` (v0.2) | unit/fixture-tested (types, state, both adapters, git worktree delivery, capability routing, plan rendering); **no live end-to-end run with a real Claude or Codex worker yet** — see [`docs/ship-v0.2/plan.md`](docs/ship-v0.2/plan.md) |
 
 **Roadmap, in order of usefulness:**
-1. Pilot and calibrate the suite in [`evals/`](evals/), so the behavioural claims become measured claims.
-2. Defect-detection comparison against a bare agent on a seeded-bug corpus.
-3. Token-usage measurement per task class.
-4. A worked LARGE example in a real multi-package repo.
+1. A recorded live smoke run of `packages/cli` against real Claude and Codex workers — the one thing its test suite cannot prove on its own.
+2. Pilot and calibrate the suite in [`evals/`](evals/), so the behavioural claims become measured claims.
+3. Defect-detection comparison against a bare agent on a seeded-bug corpus.
+4. Token-usage measurement per task class.
+5. A worked LARGE example in a real multi-package repo.
 
 Issues and counter-examples are more valuable than stars right now — particularly cases where
 it over-orchestrates a small task or under-verifies a risky one.
