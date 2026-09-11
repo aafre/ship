@@ -9,6 +9,7 @@ import { platform } from "node:process";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import type { Capabilities, Profile } from "../types.js";
+import { resolveWindowsCommand } from "./windows-shim.js";
 
 type Worker = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -61,11 +62,15 @@ export function buildArgs(profile: Profile, briefing: string, sessionId: string)
 const running = new Map<string, Worker>();
 
 export function launch(profile: Profile, briefing: string, cwd: string, opts: LaunchOptions = {}): LaunchResult {
-  const command = opts.command ?? "claude";
   const sessionId = randomUUID();
   const args = opts.args ?? buildArgs(profile, briefing, sessionId);
 
-  const child = spawn(command, args, {
+  // Resolving past a Windows .cmd shim only applies to the real default
+  // binary; test callers always pass an explicit opts.command (e.g. node.exe)
+  // that's already directly spawnable.
+  const resolved = opts.command ? { command: opts.command, prefixArgs: [] } : resolveWindowsCommand("claude");
+
+  const child = spawn(resolved.command, [...resolved.prefixArgs, ...args], {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
     detached: platform !== "win32",
