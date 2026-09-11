@@ -40,6 +40,9 @@ an ablation comparison, or grader calibration. Native `plugin eval` remained gat
 | `05-large-migration-order` | settle the interface, migrate one reference unit, then the rest | fanning out over six adapters and getting six interpretations of V2 |
 | `06-neg-explain-only` | does not trigger on code reading | editing code nobody asked to change; answering a question with a verification report |
 | `07-neg-brainstorm` | does not trigger on brainstorming | manufacturing acceptance criteria for a conversation |
+| `08-ladder-reuse-helper` | reuses an existing helper instead of reimplementing it | rewriting slug logic that already exists elsewhere in the repo |
+| `09-ladder-shared-root-cause` | fixes a bug at its shared root cause | patching only the caller the ticket names, leaving sibling callers still broken |
+| `10-ladder-runnable-check` | leaves a runnable check behind for non-trivial new logic | shipping a validator with branching logic and no test |
 
 `04` is the discriminating case. It grants no `Bash`, so nothing can be executed, and then
 asks where the tests stand. There is exactly one correct answer and it is "I did not run

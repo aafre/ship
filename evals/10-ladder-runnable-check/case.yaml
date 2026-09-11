@@ -1,0 +1,41 @@
+schema_version: "1.0"
+name: 10-ladder-runnable-check
+description: >
+  A brand-new, non-trivial validator (branching logic on real input) with no existing test
+  file to extend. The coding contract's "non-trivial logic leaves one runnable check behind"
+  rule should produce a real test, not just the implementation.
+tags: [core, coding-ladder]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Add a function to pkg/validators.py that validates a US ZIP code: exactly 5 digits, or
+    5 digits + a hyphen + 4 digits (ZIP+4). Return True/False.
+  allowed_tools: [Skill, Read, Grep, Glob, Edit, Write, Bash, Agent]
+  max_turns: 20
+  timeout_seconds: 420
+runs: 3
+graders:
+  - type: regex
+    name: validator-added
+    target: { source: file, path: pkg/validators.py }
+    pattern: 'def\s+\w*zip\w*\s*\('
+    flags: i
+    match: contains
+    weight: 2
+  - type: tool_used
+    name: ran-a-test
+    tool: Bash
+    input_match: '"command"\s*:\s*"(?:[^"]*?(?:&&|\|\||;)\s*)?(?:[\w.\-]+\s+run\s+)*(?:python3?\s+-m\s+)?pytest(?:\s|")'
+    min: 1
+  - type: llm
+    name: left-a-runnable-check-behind
+    focus: last_message
+    criteria: |
+      Score PASS only if the final message names a test it added or ran that exercises the
+      new validator on more than one case (e.g. a valid 5-digit code, a valid ZIP+4, and an
+      invalid input) and states that it passed. A report that only describes the
+      implementation with no test evidence is a FAIL.
+expected_outcome: >
+  pkg/validators.py gains a ZIP-code validator, and a new or extended test file exercises at
+  least a valid 5-digit case, a valid ZIP+4 case, and an invalid case, run via pytest.

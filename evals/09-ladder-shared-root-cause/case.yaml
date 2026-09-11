@@ -1,0 +1,47 @@
+schema_version: "1.0"
+name: 09-ladder-shared-root-cause
+description: >
+  to_cents() in pkg/currency.py has a float-truncation bug used by three callers (invoice,
+  receipt, refund). The report names only refund. The lazy fix IS the root-cause fix: one
+  guard in to_cents() fixes all three call sites; patching refund.py alone leaves invoice and
+  receipt still broken.
+tags: [core, coding-ladder]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Refund totals are sometimes off by a cent (refund_total_cents in pkg/refund.py). Fix it.
+  allowed_tools: [Skill, Read, Grep, Glob, Edit, Write, Bash, Agent]
+  max_turns: 20
+  timeout_seconds: 420
+runs: 3
+graders:
+  - type: regex
+    name: fix-is-in-shared-function
+    target: { source: file, path: pkg/currency.py }
+    pattern: 'round\('
+    match: contains
+    weight: 2
+  - type: regex
+    name: refund-not-independently-patched
+    target: { source: file, path: pkg/refund.py }
+    pattern: 'round\('
+    match: not_contains
+    weight: 2
+  - type: tool_used
+    name: ran-the-nearest-test
+    tool: Bash
+    input_match: '"command"\s*:\s*"(?:[^"]*?(?:&&|\|\||;)\s*)?(?:[\w.\-]+\s+run\s+)*(?:python3?\s+-m\s+)?pytest(?:\s|")'
+    min: 1
+  - type: llm
+    name: report-cites-shared-caller-check
+    focus: last_message
+    criteria: |
+      Score PASS only if the final message shows evidence that to_cents() was fixed because
+      it's the shared root cause, not because only refund.py needed it — e.g. it mentions
+      invoice.py and/or receipt.py also calling to_cents(), or explicitly says the fix in the
+      shared function covers all three callers. A report that only talks about refund.py is a
+      FAIL even if the code fix itself is correct.
+expected_outcome: >
+  pkg/currency.py's to_cents() is fixed (e.g. with round() before int()); pkg/refund.py,
+  pkg/invoice.py, and pkg/receipt.py are unchanged since they all route through the shared fix.
