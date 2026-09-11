@@ -395,11 +395,14 @@ it over-orchestrates a small task or under-verifies a risky one.
 
 ## Contributing
 
-The whole skill is Markdown; there is no build.
+`skills/ship/` is the canonical source; `.claude/skills/ship/` and `.claude/agents/` are
+generated copies checked into the repo so Quickstart still needs no build step.
 
 ```bash
 git clone https://github.com/aafre/ship.git
-# edit .claude/skills/ship/SKILL.md or references/
+# edit skills/ship/SKILL.md or skills/ship/references/ (never .claude/skills/ directly)
+cd packages/cli && npm run build:integrations   # regenerates .claude/skills, .claude/agents, plugin.json
+npm run check:drift                              # fails if a generated copy was hand-edited instead
 python path/to/skill-creator/scripts/quick_validate.py .claude/skills/ship
 ```
 

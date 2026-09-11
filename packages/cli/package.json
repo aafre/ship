@@ -8,7 +8,9 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "test": "tsc -p . && node --test \"dist/**/*.test.js\""
+    "test": "tsc -p . && node --test \"dist/**/*.test.js\" \"scripts/**/*.test.mjs\"",
+    "build:integrations": "node scripts/build-integrations.mjs",
+    "check:drift": "node scripts/check-drift.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
