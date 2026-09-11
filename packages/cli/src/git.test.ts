@@ -156,7 +156,7 @@ test("single small task skips the integrate branch entirely", async () => {
   assert.equal(branches, "", "no integrate branch should exist for a single-task run");
 });
 
-test("failing affected checks after a clean merge marks the task failed, not integrated", async () => {
+test("failing affected checks after a clean merge marks the task failed and undoes the merge", async () => {
   const repoRoot = initRepo();
   const worktreesDir = join(repoRoot, ".worktrees");
   const graph: TaskGraph = { version: 1, tasks: [task("A"), task("B")] };
@@ -168,10 +168,42 @@ test("failing affected checks after a clean merge marks the task failed, not int
     runAffectedChecks: async () => false,
   });
 
+  // Force the integrate branch to exist before recording its pre-merge head.
   const aPath = resolveCwd(task("A"));
+  const headBefore = git(repoRoot, ["rev-parse", integrateBranch("run-1")]);
+
   simulateWork(aPath, "A.txt", "a\n");
   const outcome = await verify(task("A"), fakeResult("A"));
   assert.equal(outcome.status, "failed");
+
+  const headAfter = git(repoRoot, ["rev-parse", integrateBranch("run-1")]);
+  assert.equal(headAfter, headBefore, "a merge whose checks failed must be undone, not left in the integrate branch");
+  assert.throws(
+    () => git(repoRoot, ["show", `${integrateBranch("run-1")}:A.txt`]),
+    "A.txt must not be reachable from the integrate branch after a failed check",
+  );
+});
+
+test("a stale MERGE_HEAD left by a crashed merge is cleaned up, not reported as a real conflict", async () => {
+  const repoRoot = initRepo();
+  const worktreesDir = join(repoRoot, ".worktrees");
+  const graph: TaskGraph = { version: 1, tasks: [task("A"), task("B")] };
+  const { resolveCwd, verify } = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+
+  const aPath = resolveCwd(task("A"));
+  simulateWork(aPath, "A.txt", "a\n");
+  await verify(task("A"), fakeResult("A"));
+
+  const bPath = resolveCwd(task("B"));
+  simulateWork(bPath, "B.txt", "b\n");
+
+  const integrateWorktreePath = join(worktreesDir, "integrate");
+  // Simulate a crash mid-merge: start a real merge and kill it before it concludes.
+  git(integrateWorktreePath, ["merge", "--no-commit", "--no-ff", "ship/run-1/B"]);
+  assert.doesNotThrow(() => git(integrateWorktreePath, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]));
+
+  const outcome = await verify(task("B"), fakeResult("B"));
+  assert.equal(outcome.status, "integrated", "a stale MERGE_HEAD from a crash must not be mistaken for a content conflict");
 });
 
 test("a worktree left behind by an interrupted attempt is adopted, not recreated, on resume", async () => {

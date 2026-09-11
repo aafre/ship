@@ -89,8 +89,31 @@ export interface MergeOutcome {
   conflict: boolean;
 }
 
-/** Merges branch into whatever is checked out in integrateWorktreePath. On conflict, aborts so the integrate head is left untouched. */
+/** True if a previous merge attempt in this worktree crashed mid-merge, leaving MERGE_HEAD behind. */
+function hasStaleMerge(worktreePath: string): boolean {
+  try {
+    git(worktreePath, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Merges branch into whatever is checked out in integrateWorktreePath. A
+ * MERGE_HEAD left over from a crashed prior attempt is cleaned up first — that
+ * is resume housekeeping, not a conflict from *this* attempt. On an actual
+ * conflict, aborts so the integrate head is left untouched.
+ */
 export function mergeTaskBranch(integrateWorktreePath: string, branch: string): MergeOutcome {
+  if (hasStaleMerge(integrateWorktreePath)) {
+    try {
+      git(integrateWorktreePath, ["merge", "--abort"]);
+    } catch {
+      // already clean somehow — fine
+    }
+  }
+
   try {
     git(integrateWorktreePath, ["merge", "--no-ff", "--no-edit", branch]);
     return { merged: true, conflict: false };
@@ -150,10 +173,12 @@ export function createGitIntegration(opts: GitIntegrationOptions): {
     const headCommit = headOf(repoRoot, wt.branch);
 
     if (single) {
+      if (!(await runAffectedChecks(task))) return { status: "failed" };
       return { status: "integrated", baseCommit: wt.baseRef, headCommit };
     }
 
     if (!integrateWorktreePath) return { status: "failed" };
+    const preMergeHead = headOf(repoRoot, integrateBranch(runId));
     const { merged, conflict } = mergeTaskBranch(integrateWorktreePath, wt.branch);
     if (conflict) {
       return {
@@ -164,6 +189,10 @@ export function createGitIntegration(opts: GitIntegrationOptions): {
     if (!merged) return { status: "failed" };
 
     if (!(await runAffectedChecks(task))) {
+      // The merge commit already landed; checks are supposed to gate
+      // integration, not follow it, so undo it and leave the integrate
+      // head exactly where it was before this attempt.
+      git(integrateWorktreePath, ["reset", "--hard", preMergeHead]);
       return { status: "failed" };
     }
 
