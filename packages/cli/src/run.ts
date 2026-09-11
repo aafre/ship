@@ -50,9 +50,18 @@ function defaultBriefing(task: Task, runId: string, attemptId: string): string {
   return [
     `Task ${task.id} (run ${runId}, attempt ${attemptId}): ${task.objective}`,
     `Owned paths: ${task.ownedPaths.join(", ") || "(none declared)"}`,
-    "Reply with exactly one JSON object matching WorkerResult, nothing else:",
+    "",
+    "Do the work described above first: create/edit real files, run real commands. Only once",
+    "that is actually done, reply with your FINAL message being exactly one JSON object (no",
+    "prose before or after it) reporting truthfully what you did — never the example below",
+    "verbatim, and never a field naming a file or command you did not actually touch or run:",
     `{"version":1,"runId":"${runId}","taskId":"${task.id}","attemptId":"${attemptId}",` +
-      `"changedPaths":[],"commandsRun":[],"evidencePaths":[],"blockers":[]}`,
+      `"changedPaths":["<files you actually created or edited>"],` +
+      `"commandsRun":[{"command":"<a command you actually ran>","outcome":"<its real result>"}],` +
+      `"evidencePaths":[],"blockers":["<only if you could not proceed; omit otherwise>"]}`,
+    "",
+    "If you could not complete the objective, set changedPaths/commandsRun to reflect only",
+    "what you actually did (possibly nothing) and explain why in blockers.",
   ].join("\n");
 }
 

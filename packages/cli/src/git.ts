@@ -45,6 +45,15 @@ function branchExists(repoRoot: string, branch: string): boolean {
  */
 function createOrAdoptWorktree(repoRoot: string, branch: string, worktreePath: string, baseRef: string): void {
   if (existsSync(worktreePath)) return; // left behind by an interrupted attempt; reuse as-is
+
+  // The directory is gone, but git's own worktree registry can still point
+  // at it (e.g. someone deleted a run directory by hand instead of through
+  // `git worktree remove`) — `git worktree add` refuses to reuse a path it
+  // still has registered. Prune stale entries first; this only removes
+  // registrations whose working directory is already missing, so it never
+  // touches a worktree that's actually still there.
+  git(repoRoot, ["worktree", "prune"]);
+
   if (branchExists(repoRoot, branch)) {
     git(repoRoot, ["worktree", "add", worktreePath, branch]);
   } else {
@@ -172,10 +181,26 @@ export function createGitIntegration(opts: GitIntegrationOptions): {
     return created.worktreePath;
   }
 
-  async function verify(task: Task): Promise<VerifyOutcome> {
+  async function verify(task: Task, result: WorkerResult): Promise<VerifyOutcome> {
     const wt = taskWorktrees.get(task.id);
     if (!wt) return { status: "failed" };
     const headCommit = headOf(repoRoot, wt.branch);
+
+    // "Integrated" is a claim that something was actually done. A worker
+    // that left neither a commit nor uncommitted work, and gave no blocker
+    // explaining why, has no evidence behind it at all — whether it claimed
+    // changes it didn't make, or just quietly did nothing. Evidence beats
+    // assertion; a bare "no changes, no blockers" is not evidence.
+    const commitsAhead = Number(git(repoRoot, ["rev-list", "--count", `${wt.baseRef}..${wt.branch}`]));
+    const noGitEvidence = commitsAhead === 0 && isWorktreeClean(wt.worktreePath);
+    const noBlockerGivenForIdleness = !result.blockers || result.blockers.length === 0;
+    if (noGitEvidence && noBlockerGivenForIdleness) {
+      const claim = result.changedPaths.length > 0 ? `claimed changes to ${result.changedPaths.join(", ")}` : "reported no changes and gave no blocker";
+      return {
+        status: "failed",
+        question: `worker ${claim}, but the worktree has no commit and no uncommitted changes`,
+      };
+    }
 
     if (single) {
       if (!(await runAffectedChecks(task, wt.worktreePath))) return { status: "failed" };

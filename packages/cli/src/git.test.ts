@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -227,6 +227,54 @@ test("a worktree left behind by an interrupted attempt is adopted, not recreated
 
   const outcome = await second.verify(task("A"), fakeResult("A"));
   assert.equal(outcome.status, "integrated");
+});
+
+test("a worker that claims changed paths but left no commit and no uncommitted changes is rejected, not integrated", async () => {
+  const repoRoot = initRepo();
+  const worktreesDir = join(repoRoot, ".worktrees");
+  const graph: TaskGraph = { version: 1, tasks: [task("A")] };
+  const { resolveCwd, verify } = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+
+  resolveCwd(task("A")); // worktree created, but the "worker" does nothing in it
+  const claimedResult = { ...fakeResult("A"), changedPaths: ["A.txt"] };
+  const outcome = await verify(task("A"), claimedResult);
+
+  assert.equal(outcome.status, "failed");
+  assert.match(outcome.question ?? "", /no commit and no uncommitted changes/);
+});
+
+test("a worker that honestly reports no changes and no blockers is still rejected, not silently integrated", async () => {
+  // This is the case observed live: a worker replied with the empty-arrays
+  // example template instead of doing the task, with no false claim and no
+  // stated blocker either. "No evidence, no explanation" must not integrate.
+  const repoRoot = initRepo();
+  const worktreesDir = join(repoRoot, ".worktrees");
+  const graph: TaskGraph = { version: 1, tasks: [task("A")] };
+  const { resolveCwd, verify } = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+
+  resolveCwd(task("A"));
+  const outcome = await verify(task("A"), fakeResult("A")); // changedPaths: [], blockers: []
+
+  assert.equal(outcome.status, "failed");
+  assert.match(outcome.question ?? "", /reported no changes and gave no blocker/);
+});
+
+test("a worktree whose directory was deleted by hand (registration still stale in git) is reclaimed, not rejected", async () => {
+  const repoRoot = initRepo();
+  const worktreesDir = join(repoRoot, ".worktrees");
+  const graph: TaskGraph = { version: 1, tasks: [task("A")] };
+
+  const first = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+  const aPath = first.resolveCwd(task("A"));
+  simulateWork(aPath, "A.txt", "a\n");
+
+  // Someone deletes the run directory directly instead of through `git
+  // worktree remove` — git's own registry still thinks aPath is a worktree.
+  rmSync(aPath, { recursive: true, force: true });
+  assert.match(git(repoRoot, ["worktree", "list"]), /prunable/);
+
+  const second = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+  assert.doesNotThrow(() => second.resolveCwd(task("A")));
 });
 
 test("mergeTaskBranch aborts cleanly when there is nothing to merge (no throw over throw)", () => {
