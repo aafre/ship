@@ -36,6 +36,13 @@ export interface RunOptions {
   verify?: (task: Task, result: WorkerResult) => Promise<VerifyOutcome>;
   /** Per-task working directory; git.ts's createGitIntegration supplies per-task worktrees. Defaults to a single shared cwd. */
   resolveCwd?: (task: Task) => string;
+  /**
+   * The revision hash of the plan being run (plan.ts's revisionHash()). `run`
+   * on a plan is the approval (plan §4): the first run binds this hash into
+   * state; a later run with a different hash means the plan changed after
+   * approval and refuses to dispatch anything until it matches again.
+   */
+  planRevisionHash?: string;
   signal?: AbortSignal;
 }
 
@@ -106,6 +113,16 @@ export async function run(options: RunOptions): Promise<RunState> {
     // new to state starts pending. Existing entries are never reset here.
     for (const t of options.graph.tasks) {
       if (!state.tasks[t.id]) state.tasks[t.id] = { status: "pending" };
+    }
+
+    if (options.planRevisionHash) {
+      if (state.approvedPlanRevision === null) {
+        state.approvedPlanRevision = options.planRevisionHash; // running it is the approval
+      } else if (state.approvedPlanRevision !== options.planRevisionHash) {
+        throw new Error(
+          `plan has changed since approval (approved ${state.approvedPlanRevision}, got ${options.planRevisionHash}); re-approve before running`,
+        );
+      }
     }
 
     // A process that died mid-run leaves nothing live behind; a task still

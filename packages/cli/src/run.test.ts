@@ -153,3 +153,24 @@ test("resuming a run does not relaunch an already-integrated task", async () => 
   assert.equal(secondState.tasks.C.status, "integrated");
   assert.ok(!launches.some((l) => l.taskId === "A"));
 });
+
+test("running a plan for the first time is the approval; a changed plan is refused until re-approved", async () => {
+  const runDir = tempRunDir();
+  const graph: TaskGraph = { version: 1, tasks: [task("A")] };
+  const { adapter } = fakeAdapter({ A: (ctx) => [successEvent(ctx)] });
+
+  const first = await run({ runId: "run-1", graph, runDir, cwd: process.cwd(), profile, adapter, planRevisionHash: "rev-1" });
+  assert.equal(first.approvedPlanRevision, "rev-1");
+  assert.equal(first.tasks.A.status, "integrated");
+
+  const { adapter: secondAdapter } = fakeAdapter({});
+  await assert.rejects(
+    run({ runId: "run-1", graph, runDir, cwd: process.cwd(), profile, adapter: secondAdapter, planRevisionHash: "rev-2" }),
+    /re-approve/,
+  );
+
+  // Running the originally-approved revision again still works.
+  const { adapter: thirdAdapter } = fakeAdapter({});
+  const third = await run({ runId: "run-1", graph, runDir, cwd: process.cwd(), profile, adapter: thirdAdapter, planRevisionHash: "rev-1" });
+  assert.equal(third.tasks.A.status, "integrated");
+});
