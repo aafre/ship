@@ -86,6 +86,19 @@ export function isWorktreeClean(worktreePath: string): boolean {
   return git(worktreePath, ["status", "--porcelain"]).length === 0;
 }
 
+/**
+ * Commits any uncommitted work in a task's worktree under Ship's own
+ * message. A worker's job is to do the work; requiring it to also remember
+ * to `git commit` is a compliance dependency Ship shouldn't need — this
+ * makes "did the work get captured" Ship's responsibility, not the
+ * worker's. No-op if the worktree is already clean.
+ */
+export function commitAnyPendingWork(worktreePath: string, taskId: string): void {
+  if (isWorktreeClean(worktreePath)) return;
+  git(worktreePath, ["add", "-A"]);
+  git(worktreePath, ["commit", "-m", `ship: capture ${taskId}'s uncommitted work`]);
+}
+
 /** Removes a worktree only if it's clean. Returns whether it removed it — a dirty or failed one is left for reconciliation. */
 export function removeWorktreeIfClean(repoRoot: string, worktreePath: string): boolean {
   if (!isWorktreeClean(worktreePath)) return false;
@@ -184,21 +197,24 @@ export function createGitIntegration(opts: GitIntegrationOptions): {
   async function verify(task: Task, result: WorkerResult): Promise<VerifyOutcome> {
     const wt = taskWorktrees.get(task.id);
     if (!wt) return { status: "failed" };
+
+    // Capture whatever the worker actually did before judging it — a
+    // worker's job is the work, not remembering to commit it.
+    commitAnyPendingWork(wt.worktreePath, task.id);
     const headCommit = headOf(repoRoot, wt.branch);
 
-    // "Integrated" is a claim that something was actually done. A worker
-    // that left neither a commit nor uncommitted work, and gave no blocker
-    // explaining why, has no evidence behind it at all — whether it claimed
-    // changes it didn't make, or just quietly did nothing. Evidence beats
-    // assertion; a bare "no changes, no blockers" is not evidence.
+    // "Integrated" is a claim that something was actually done. Nothing
+    // committed (even after the capture above) and no blocker explaining
+    // why is no evidence at all — whether the worker claimed changes it
+    // didn't make, or just quietly did nothing. Evidence beats assertion; a
+    // bare "no changes, no blockers" is not evidence.
     const commitsAhead = Number(git(repoRoot, ["rev-list", "--count", `${wt.baseRef}..${wt.branch}`]));
-    const noGitEvidence = commitsAhead === 0 && isWorktreeClean(wt.worktreePath);
     const noBlockerGivenForIdleness = !result.blockers || result.blockers.length === 0;
-    if (noGitEvidence && noBlockerGivenForIdleness) {
+    if (commitsAhead === 0 && noBlockerGivenForIdleness) {
       const claim = result.changedPaths.length > 0 ? `claimed changes to ${result.changedPaths.join(", ")}` : "reported no changes and gave no blocker";
       return {
         status: "failed",
-        question: `worker ${claim}, but the worktree has no commit and no uncommitted changes`,
+        question: `worker ${claim}, but the worktree has no commit`,
       };
     }
 

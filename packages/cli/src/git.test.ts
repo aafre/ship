@@ -4,7 +4,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createGitIntegration, integrateBranch, isWorktreeClean, mergeTaskBranch } from "./git.js";
+import {
+  baseCommit,
+  createGitIntegration,
+  createTaskWorktree,
+  integrateBranch,
+  isWorktreeClean,
+  mergeTaskBranch,
+  removeWorktreeIfClean,
+} from "./git.js";
 import type { Task, TaskGraph, WorkerResult } from "./types.js";
 
 function git(cwd: string, args: string[]): string {
@@ -126,19 +134,21 @@ test("a dirty user file in the repo root survives worktree creation and merging 
   assert.equal(git(repoRoot, ["status", "--porcelain"]).includes("untracked-work.txt"), true);
 });
 
-test("a dirty worktree is not removed after integration", async () => {
+test("removeWorktreeIfClean refuses to remove a worktree with uncommitted changes", () => {
+  // In the normal verify() flow, a task's own worktree is always clean by
+  // the time this runs (commitAnyPendingWork captures everything first) —
+  // this tests the safety primitive itself, independent of that flow, since
+  // it's the one thing standing between "clean up" and losing real work if
+  // that invariant is ever violated by a future change.
   const repoRoot = initRepo();
   const worktreesDir = join(repoRoot, ".worktrees");
-  const graph: TaskGraph = { version: 1, tasks: [task("A"), task("B")] };
-  const { resolveCwd, verify } = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+  const { worktreePath } = createTaskWorktree(repoRoot, "run-1", "A", worktreesDir, baseCommit(repoRoot));
+  writeFileSync(join(worktreePath, "uncommitted.txt"), "not committed");
 
-  const aPath = resolveCwd(task("A"));
-  simulateWork(aPath, "A.txt", "a\n");
-  writeFileSync(join(aPath, "leftover.txt"), "uncommitted");
-  await verify(task("A"), fakeResult("A"));
+  const removed = removeWorktreeIfClean(repoRoot, worktreePath);
 
-  assert.ok(existsSync(aPath), "a dirty worktree must be left in place, not removed");
-  assert.equal(isWorktreeClean(aPath), false);
+  assert.equal(removed, false);
+  assert.ok(existsSync(worktreePath), "a dirty worktree must be left in place, not removed");
 });
 
 test("single small task skips the integrate branch entirely", async () => {
@@ -240,7 +250,7 @@ test("a worker that claims changed paths but left no commit and no uncommitted c
   const outcome = await verify(task("A"), claimedResult);
 
   assert.equal(outcome.status, "failed");
-  assert.match(outcome.question ?? "", /no commit and no uncommitted changes/);
+  assert.match(outcome.question ?? "", /the worktree has no commit/);
 });
 
 test("a worker that honestly reports no changes and no blockers is still rejected, not silently integrated", async () => {
@@ -257,6 +267,26 @@ test("a worker that honestly reports no changes and no blockers is still rejecte
 
   assert.equal(outcome.status, "failed");
   assert.match(outcome.question ?? "", /reported no changes and gave no blocker/);
+});
+
+test("a worker that writes real files but never commits them still gets its work captured and integrated", async () => {
+  // This is the second case observed live: the worker actually did the
+  // task (created the right file with the right content) but never ran
+  // `git commit`. Ship must capture that work itself rather than treating
+  // an uncommitted dirty worktree as either "nothing happened" or as
+  // sufficient evidence on its own without ever landing a commit.
+  const repoRoot = initRepo();
+  const worktreesDir = join(repoRoot, ".worktrees");
+  const graph: TaskGraph = { version: 1, tasks: [task("A")] };
+  const { resolveCwd, verify } = createGitIntegration({ repoRoot, runId: "run-1", worktreesDir, graph });
+
+  const aPath = resolveCwd(task("A"));
+  writeFileSync(join(aPath, "A.txt"), "a\n"); // written but never `git add`/`git commit`ed
+
+  const outcome = await verify(task("A"), { ...fakeResult("A"), changedPaths: ["A.txt"] });
+
+  assert.equal(outcome.status, "integrated");
+  assert.equal(git(repoRoot, ["show", "ship/run-1/A:A.txt"]).replace(/\r\n/g, "\n"), "a");
 });
 
 test("a worktree whose directory was deleted by hand (registration still stale in git) is reclaimed, not rejected", async () => {
