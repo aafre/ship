@@ -21,6 +21,7 @@ Read a reference only when the phase needs it. Don't preload.
 | `references/workflow-rules.md` | Implementation, verification, and completion detail — long-form rules for steps 5, 8, 11. |
 | `references/task-contract.md` | Writing the internal contract, or persisting it for a LARGE task / resuming one. |
 | `references/review-contract.md` | Briefing the reviewer, or triaging the findings that come back. |
+| `references/verifier-contract.md` | Briefing a verifier, choosing what a check needs, or deciding what a failure means. |
 | `references/parallelism.md` | You are about to consider more than one implementation agent, a DAG, or worktrees. |
 
 ## The loop

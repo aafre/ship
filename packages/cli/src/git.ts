@@ -133,8 +133,13 @@ export interface GitIntegrationOptions {
   /** Where per-task and integrate worktrees live, e.g. join(runDir, "worktrees"). */
   worktreesDir: string;
   graph: TaskGraph;
-  /** Reruns the checks affected by this task's merge; defaults to "no checks configured, trust the merge." */
-  runAffectedChecks?: (task: Task) => Promise<boolean>;
+  /**
+   * Reruns the checks affected by this task's merge, in the given worktree —
+   * the single-task branch's own worktree, or the integrate worktree holding
+   * the just-merged combined code. Never the caller's own working tree.
+   * Defaults to "no checks configured, trust the merge."
+   */
+  runAffectedChecks?: (task: Task, worktreePath: string) => Promise<boolean>;
 }
 
 /**
@@ -173,7 +178,7 @@ export function createGitIntegration(opts: GitIntegrationOptions): {
     const headCommit = headOf(repoRoot, wt.branch);
 
     if (single) {
-      if (!(await runAffectedChecks(task))) return { status: "failed" };
+      if (!(await runAffectedChecks(task, wt.worktreePath))) return { status: "failed" };
       return { status: "integrated", baseCommit: wt.baseRef, headCommit };
     }
 
@@ -188,7 +193,7 @@ export function createGitIntegration(opts: GitIntegrationOptions): {
     }
     if (!merged) return { status: "failed" };
 
-    if (!(await runAffectedChecks(task))) {
+    if (!(await runAffectedChecks(task, integrateWorktreePath))) {
       // The merge commit already landed; checks are supposed to gate
       // integration, not follow it, so undo it and leave the integrate
       // head exactly where it was before this attempt.
