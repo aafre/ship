@@ -395,10 +395,10 @@ that's CI's job, and ship is designed to arrive at CI with the checks already gr
 | Eval suite ([`evals/`](evals/), 10 cases, with/without ablation) | **written, not yet run** — blocked on `claude plugin eval` early access |
 | Published benchmark numbers | **not built** |
 | Design-scenario coverage | walked through 7 scenarios (trivial fix, feature, security-sensitive change, parallelizable migration, non-parallelizable refactor, reviewer false positive, context pressure) — a design review, not an empirical result |
-| `packages/cli/` (v0.2) | unit/fixture-tested (types, state, both adapters, git worktree delivery, capability routing, plan rendering); **no live end-to-end run with a real Claude or Codex worker yet** — see [`docs/ship-v0.2/plan.md`](docs/ship-v0.2/plan.md) |
+| `packages/cli/` (v0.2) | unit/fixture-tested; **one recorded live run, Claude host/Claude worker, single small task** — see [`docs/ship-v0.2/smoke-log.md`](docs/ship-v0.2/smoke-log.md). That run took four attempts, each surfacing and fixing a real bug fixture tests couldn't reach (a Windows spawn failure, stale git worktree state, a silently false "integrated" claim, and uncommitted-but-correct work). Codex-worker and multi-task/manual-task runs are **not yet run**. |
 
 **Roadmap, in order of usefulness:**
-1. A recorded live smoke run of `packages/cli` against real Claude and Codex workers — the one thing its test suite cannot prove on its own.
+1. Live smoke coverage for the Codex adapter and a multi-task/manual-task run — the Claude/single-small-task path is now proven; the rest of the matrix isn't.
 2. Pilot and calibrate the suite in [`evals/`](evals/), so the behavioural claims become measured claims.
 3. Defect-detection comparison against a bare agent on a seeded-bug corpus.
 4. Token-usage measurement per task class.
