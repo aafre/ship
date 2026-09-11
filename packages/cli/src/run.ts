@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DEFAULT_SLOTS, isTerminal, selectReadyTasks } from "./scheduler.js";
 import type { SlotConfig } from "./scheduler.js";
 import { acquireLock, readState, releaseLock, writeState } from "./state.js";
-import type { Profile, RunState, Task, TaskGraph, WorkerResult } from "./types.js";
+import type { Profile, RunState, Task, TaskGraph, VerifyOutcome, WorkerResult } from "./types.js";
 
 export interface AdapterEvent {
   type: string;
@@ -29,11 +29,13 @@ export interface RunOptions {
   slots?: SlotConfig;
   buildBriefing?: (task: Task, runId: string, attemptId: string) => string;
   /**
-   * ponytail: T04 adds real Git integration and T07 adds real review/verify
-   * routing. Until then, this decides whether an implemented task counts as
-   * integrated; the default trusts a successful implement.
+   * Decides what happens to an implemented task: git.ts's createGitIntegration
+   * supplies the real merge-and-check logic; the default just trusts a clean
+   * implement (useful for tests and for T07's not-yet-built review routing).
    */
-  verify?: (task: Task, result: WorkerResult) => Promise<boolean>;
+  verify?: (task: Task, result: WorkerResult) => Promise<VerifyOutcome>;
+  /** Per-task working directory; git.ts's createGitIntegration supplies per-task worktrees. Defaults to a single shared cwd. */
+  resolveCwd?: (task: Task) => string;
   signal?: AbortSignal;
 }
 
@@ -47,8 +49,8 @@ function defaultBriefing(task: Task, runId: string, attemptId: string): string {
   ].join("\n");
 }
 
-async function defaultVerify(): Promise<boolean> {
-  return true;
+async function defaultVerify(): Promise<VerifyOutcome> {
+  return { status: "integrated" };
 }
 
 type Outcome = { ok: true; result: WorkerResult } | { ok: false; reason: string };
@@ -88,6 +90,7 @@ export async function run(options: RunOptions): Promise<RunState> {
   const slots = options.slots ?? DEFAULT_SLOTS;
   const buildBriefing = options.buildBriefing ?? defaultBriefing;
   const verify = options.verify ?? defaultVerify;
+  const resolveCwd = options.resolveCwd ?? (() => options.cwd);
   const statePath = join(options.runDir, "state.json");
 
   const lock = acquireLock(options.runDir);
@@ -121,7 +124,8 @@ export async function run(options: RunOptions): Promise<RunState> {
       const dispatched = ready.map((task) => {
         const attemptId = randomUUID();
         const briefing = buildBriefing(task, options.runId, attemptId);
-        const { sessionId, pid, events } = options.adapter.launch(options.profile, briefing, options.cwd);
+        const cwd = resolveCwd(task);
+        const { sessionId, pid, events } = options.adapter.launch(options.profile, briefing, cwd);
         state.tasks[task.id] = { status: "running", attemptId, sessionId, pid };
         return { task, attemptId, sessionId, events };
       });
@@ -132,22 +136,22 @@ export async function run(options: RunOptions): Promise<RunState> {
           task,
           attemptId,
           sessionId,
-          outcome: await collectResult(events),
+          collected: await collectResult(events),
         })),
       );
 
-      for (const { task, attemptId, sessionId, outcome } of outcomes) {
+      for (const { task, attemptId, sessionId, collected } of outcomes) {
         const runtime = state.tasks[task.id];
         if (runtime.attemptId !== attemptId || runtime.sessionId !== sessionId) {
           continue; // superseded by a newer attempt; ignore this stale result
         }
 
-        if (!outcome.ok) {
+        if (!collected.ok) {
           runtime.status = "failed";
           continue;
         }
 
-        const result = outcome.result;
+        const result = collected.result;
         if (result.runId !== options.runId || result.taskId !== task.id || result.attemptId !== attemptId) {
           runtime.status = "failed"; // result doesn't match what we dispatched; never trust it
           continue;
@@ -161,7 +165,12 @@ export async function run(options: RunOptions): Promise<RunState> {
 
         runtime.status = "implemented";
         runtime.evidencePaths = result.evidencePaths;
-        runtime.status = (await verify(task, result)) ? "integrated" : "failed";
+
+        const outcome = await verify(task, result);
+        runtime.status = outcome.status;
+        if (outcome.question) runtime.question = outcome.question;
+        if (outcome.baseCommit) runtime.baseCommit = outcome.baseCommit;
+        if (outcome.headCommit) runtime.headCommit = outcome.headCommit;
       }
 
       writeState(statePath, state);

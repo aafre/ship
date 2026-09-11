@@ -110,7 +110,7 @@ test("a successful process alone does not release dependents; only a passed veri
     cwd: process.cwd(),
     profile,
     adapter,
-    verify: async () => false,
+    verify: async () => ({ status: "failed" }),
   });
 
   assert.equal(state.tasks.A.status, "failed");
