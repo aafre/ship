@@ -1,0 +1,19 @@
+{
+  "name": "@ship/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test \"dist/**/*.test.js\" \"scripts/**/*.test.mjs\"",
+    "build:integrations": "node scripts/build-integrations.mjs",
+    "check:drift": "node scripts/check-drift.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^5.6.0"
+  }
+}
