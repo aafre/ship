@@ -15,7 +15,7 @@ const PLUGIN_MANIFEST = {
   name: "ship",
   description:
     "Disciplined end-to-end engineering workflow: classify, recon, plan when it earns it, implement, verify with the repo's own commands, independent review, triage findings, report with evidence.",
-  version: "0.2.0",
+  version: "0.2.1",
   author: { name: "aafre" },
   // No `skills` override: the plugin root is the repo root, so Claude Code auto-discovers
   // skills/ship/ (which carries its own agents/ dir). Listing .claude/skills too would
