@@ -1,4 +1,4 @@
-# ship: a senior-engineer workflow for Claude Code
+# ship: a senior-engineer workflow for any coding agent
 
 > **ship turns an ordinary engineering request into a verified, independently reviewed change — without you orchestrating a single agent.**
 
@@ -19,7 +19,7 @@ No YAML contracts to write. No agents to pick. No "please run the tests" for the
 - **Evidence, not assertion** — a test is never reported as passing unless it ran and passed. Unverified is stated as unverified.
 - **Orchestration proportional to the task** — a typo fix spawns nothing. Eighteen independent adapters get worktrees. The decision is written down, not vibes.
 
-[Quickstart](#quickstart) · [How it works](#how-it-works) · [When not to use it](#when-to-use-ship) · [Design principles](#design-principles)
+[Quickstart](#quickstart) · [Which agents](#which-agents) · [How it works](#how-it-works) · [When not to use it](#when-to-use-ship) · [Design principles](#design-principles)
 
 ---
 
@@ -147,6 +147,42 @@ Review: ship-reviewer returned 1 finding (P2, missing test for limit=0);
         confirmed and fixed, test added.
 Unverified: integration suite not run (needs a live DB).
 ```
+
+---
+
+## Which agents
+
+**What:** ship is one Markdown package in the
+[Agent Skills](https://agentskills.io/specification) format — `skills/ship/SKILL.md` plus its
+`references/` and `agents/`. The `skills` CLI drops that package into each agent's own
+discovery directory (`.claude/skills`, `.agents/skills`, `.pi/skills`, `.cursor/skills`,
+…); the agent loads it like any other skill. Claude Code additionally gets a plugin
+marketplace, because that registers the reviewer and verifier as native subagents.
+
+**Why:** the workflow doesn't depend on the model or the host — it depends on the repo. The
+only host-specific step is independent review, and SKILL.md step 9 handles that with an
+ordered fallback: a registered `ship-reviewer` subagent → any fresh-context session (a
+subagent, `claude -p`, `codex exec`) briefed with `agents/ship-reviewer.md` → if neither
+exists, the review is reported as **pending**, never faked. So on a host with no subagents
+you still get classification, recon, real verification, and honest reporting; you lose
+independent review and are told so.
+
+Support is stated in three tiers, because "the file landed" and "the agent runs it" are
+different claims:
+
+| Tier | Agents | Evidence |
+|---|---|---|
+| **Runs end-to-end** | Claude Code | plugin + `skills` CLI install; native subagents; this repo is developed with it |
+| **Loads the skill** (verified headless: agent lists `ship` with its description) | Codex, OpenCode, Pi (global scope: `-g -a pi`) | `codex exec`, `opencode run`, `pi -p` in a scratch repo after `npx skills add aafre/ship` |
+| **Installs** (file lands in the agent's skills dir; loading unverified here) | the other ~75 the `skills` CLI supports — Antigravity, Cursor, Copilot, Gemini CLI, Cline, Windsurf, Kiro, Goose, Amp, Droid, Roo, Junie, Zed, … | `npx skills add aafre/ship -a '*'` writes 78 copies; run `npx skills add aafre/ship -l` for the current list |
+
+Per-agent notes: Pi's headless mode did not pick up a project-scope `.pi/skills/ship` in
+testing — install globally (`-g`) or pass `--skill .pi/skills/ship`. Codex and Antigravity
+share `.agents/skills/`. Hosts without subagents fall back as described above.
+
+To move an agent up a tier, run the `Loads the skill` check in a scratch repo and open a PR
+with the command and its output. Behavioural evals across hosts are tracked under
+[`evals/`](evals/); see [Project status](#project-status).
 
 ---
 

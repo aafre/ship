@@ -25,7 +25,8 @@ By hand, copy this directory to wherever your agent discovers skills (`.claude/s
 same role prompts in a fresh session (SKILL.md step 9 says how).
 
 Nothing else to configure. The skill discovers each repo's own build/test commands rather
-than assuming a language or toolchain, so it's portable as-is.
+than assuming a language or toolchain, so it's portable as-is. Verified loading: Claude Code,
+Codex, OpenCode, Pi (`-g`); the root README's "Which agents" table has the full tiering.
 
 ## Triggering
 
