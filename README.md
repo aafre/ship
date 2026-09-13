@@ -111,6 +111,13 @@ Or just ask normally — the skill triggers on substantive change requests on it
 Fix the race condition in the ingestion worker
 ```
 
+For MEDIUM/LARGE work, once a plan is approved, the skill routes the mechanical parts
+(rendering `tasks.json`, running the worker graph, checking progress) through the local CLI
+in [`packages/cli`](packages/cli) when it's built — `ship plan`, `ship run <run-dir>
+tasks.json`, `ship status <run-dir>` — instead of hand-rolling worktrees and state tracking in
+the conversation. If it isn't built, the skill falls back to doing all of that by hand; you
+never have to choose one path yourself.
+
 Expected shape of what comes back:
 
 ```
