@@ -41,6 +41,15 @@ template — it proves the migration works, exposes the surprises, and becomes t
 example every worker gets. Fanning out before you've done one is how you get N different
 wrong answers.
 
+## Epics: the same DAG, one level up
+
+For a goal spanning more than one PR's worth of work, apply this exact DAG/frontier logic
+twice: once across epics (independently shippable slices — each epic's edges, frontier, and
+parallel eligibility follow the rules below), then again inside each epic across its own task
+nodes. Same algorithm, same rules, no separate mechanism. Epic tracker format and the
+per-epic review→PR loop: `references/task-contract.md`'s `## Epics` section and
+`references/pr-strategy.md`.
+
 ## Dependency DAG
 
 For LARGE work, write the nodes and their edges before doing anything:

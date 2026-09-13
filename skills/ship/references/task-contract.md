@@ -60,6 +60,44 @@ under a page. Add a `state` section that a resuming agent can trust:
 
 Update it when a node completes, not continuously. It is a resume point, not a log.
 
+## Epics (multi-epic goals only)
+
+When a goal is decomposed into epics — independently shippable slices, each its own eventual
+PR — add an `## Epics` section to the same persisted file, above the state sections, and
+namespace each active epic's task state as its own `## State: <id>` section so parallel epics
+don't overwrite each other's resume data:
+
+```markdown
+## Epics
+Integration branch: ship/<goal-slug>   base: <commit>
+
+| id | goal | depends_on | status | branch | tasks |
+|---|---|---|---|---|---|
+| E1 | ... | — | done | ship/e1-... | T1,T2 |
+| E2 | ... | E1 | in-review | ship/e2-... | T3,T4,T5 |
+| E3 | ... | E1 | in-progress | ship/e3-... | T6 |
+
+## State: E2
+- Done: T3, T4
+- In progress: T5, worktree <path>, branch <name>
+- Verification last run: <command> → <result>
+
+## State: E3
+...
+```
+
+Status values: `not-started → in-progress → verifying → in-review → landed → ready-for-pr → done`.
+Epics follow the same dependency-DAG rules as task nodes (`references/parallelism.md`) — a
+dependency is satisfied at `landed` (merged into the local integration branch), never by
+publication, so an epic whose `depends_on` are all `landed` or later is on the frontier and
+eligible to start; epics on the same frontier with disjoint files may run in parallel. Update
+the table on epic transitions only, same as `## State`. Drop an epic's `## State: <id>` section
+once it's `landed`. Branch layout, per-epic review/fix/land/PR loop, and the final cross-epic
+gate: `references/pr-strategy.md`.
+
+Don't add this section for single-epic or SMALL/MEDIUM work — it's overhead with nothing to
+track.
+
 ## Resuming from one
 
 A fresh agent reconstructs from, in order: current git state (`git status --short`,

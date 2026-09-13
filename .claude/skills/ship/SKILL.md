@@ -23,6 +23,7 @@ Read a reference only when the phase needs it. Don't preload.
 | `references/review-contract.md` | Briefing the reviewer, or triaging the findings that come back. |
 | `references/verifier-contract.md` | Briefing a verifier, choosing what a check needs, or deciding what a failure means. |
 | `references/parallelism.md` | You are about to consider more than one implementation agent, a DAG, or worktrees. |
+| `references/pr-strategy.md` | The goal has multiple epics — briefing the per-epic review→PR loop. |
 
 ## The loop
 
@@ -87,6 +88,9 @@ regression risk.
 or several independently testable workstreams.
 → `recon → explicit plan → dependency DAG → parallelize only genuinely independent nodes →
 integrate → verify → review`. Persist contract and plan to a file so a fresh agent can resume.
+When the goal spans more than one PR's worth of work, decompose into epics — independently
+shippable slices — before the task DAG; see `references/task-contract.md`'s `## Epics`
+section.
 
 **VERY LARGE** — broad mechanical migration across many isolated units.
 → Same shape as LARGE, but hand the repeating unit to native batch/worktree mechanisms
@@ -161,7 +165,9 @@ its slice of the acceptance criteria, owned files, constraints, dependencies alr
 commands to run, required output shape). Never hand a worker your conversation. Never make it
 rediscover the repo you already mapped.
 
-Contracts, dependency DAG, worktrees, integration: `references/parallelism.md`.
+Contracts, dependency DAG, worktrees, integration: `references/parallelism.md`. For a
+multi-epic goal, the same DAG applies one level up across epics — see that file's "Epics"
+section.
 
 ## 7. Context discipline
 
@@ -234,9 +240,20 @@ verification that covers the fix.
 One extra review pass is fine if the fixes materially changed behaviour. Beyond that, stop.
 Cycling agents over subjective suggestions is how a finished change becomes unfinished.
 
+## 10.5. Review → adapt → PR, per epic (multi-epic goals only)
+
+Single-epic and SMALL/MEDIUM work: skip this, go straight to step 11.
+
+For a goal decomposed into epics, steps 8–10 above run once per epic against that epic's
+integrated branch, not once for the whole goal. Once an epic's review passes, prepare (and,
+only if asked, open) its PR rather than waiting for every epic to finish. Loop, tracker
+fields, and PR-description format: `references/pr-strategy.md`.
+
 ## 11. Completion gate
 
-Code written is not work done. Before claiming success:
+Code written is not work done. Before claiming success — per epic for multi-epic work, and
+once more for the overall goal once every epic is `landed`, with the broader suite run on the
+integration branch (opened PRs prove nothing about the union; see `references/pr-strategy.md`):
 
 - acceptance criteria met, or explicitly listed as unverified
 - the deterministic checks you ran actually passed
@@ -265,4 +282,6 @@ unless the user asked for that.
 The workflow restarts from repository state, not from this conversation. For LARGE work,
 persist the contract and plan to a file so a fresh agent can resume from git state + that
 file + the repo docs + prior workers' compact output. Prefer durable artifacts over
-remembered context.
+remembered context. For a multi-epic goal, the same file's `## Epics` table is the resume
+point for which epics are done, in progress, or not started — trust git state over it, same as
+the task-level `## State` section.
