@@ -45,7 +45,7 @@ const scratch = mkdtempSync(join(tmpdir(), "ship-check-drift-"));
 try {
   generate(scratch);
 
-  const paths = [".claude/skills/ship", ".claude/agents", ".claude-plugin/plugin.json"];
+  const paths = [".claude/skills/ship", ".claude/agents", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"];
   let drifted = false;
   for (const path of paths) {
     const differences = diffTrees(join(scratch, path), join(repoRoot, path));

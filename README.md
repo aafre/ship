@@ -87,19 +87,30 @@ limited to what the files themselves demonstrate.
 
 ## Quickstart
 
-Two files' worth of copying, no install step, no dependencies.
+**Any agent** — Claude Code, Codex, Cursor, Copilot, Cline, OpenCode, Gemini CLI, and the
+rest of the [70+ the `skills` CLI knows](https://github.com/vercel-labs/skills):
 
 ```bash
-git clone https://github.com/aafre/ship.git
-mkdir -p your-project/.claude/skills your-project/.claude/agents
-cp -r ship/.claude/skills/ship   your-project/.claude/skills/
-cp    ship/.claude/agents/ship-*.md  your-project/.claude/agents/
+npx skills add aafre/ship            # into this project; add -g for every project
+npx skills add aafre/ship -a codex   # one agent only
 ```
 
-For every project instead of one, create `~/.claude/skills/` and `~/.claude/agents/` first,
-then use those directories as the copy destinations.
+**Claude Code, as a plugin** (also registers the `ship-reviewer` / `ship-verifier` subagents):
 
-Then, in Claude Code:
+```
+/plugin marketplace add aafre/ship
+/plugin install ship@ship
+```
+
+Installed as a plugin the command is namespaced: `/ship:ship <request>`. Bare requests
+trigger it either way.
+
+**By hand** — it's Markdown. Copy `skills/ship/` to wherever your agent discovers skills
+(`.claude/skills/`, `.agents/skills/`, `~/.claude/skills/`, …). Claude Code users also copy
+`skills/ship/agents/*.md` to `.claude/agents/` to get the reviewer and verifier as native
+subagents; every other host runs those same role prompts in a fresh session instead.
+
+Then, in your agent:
 
 ```
 /ship Add cursor pagination to the users API
@@ -116,7 +127,11 @@ For MEDIUM/LARGE work, once a plan is approved, the skill routes the mechanical 
 in [`packages/cli`](packages/cli) when it's built — `ship plan`, `ship run <run-dir>
 tasks.json`, `ship status <run-dir>` — instead of hand-rolling worktrees and state tracking in
 the conversation. If it isn't built, the skill falls back to doing all of that by hand; you
-never have to choose one path yourself.
+never have to choose one path yourself. To get a `ship` command on your PATH:
+
+```bash
+cd ship/packages/cli && npm ci && npm run build && npm link
+```
 
 Expected shape of what comes back:
 
@@ -353,8 +368,9 @@ skills/ship/                  canonical source — edit here, never under .claud
 .claude/                      generated copy — `cd packages/cli && npm run build:integrations`
 ├── skills/ship/               regenerates this from skills/ship/; check:drift catches hand-edits
 └── agents/
-.claude-plugin/
-└── plugin.json                also generated; makes the repo installable and eval-resolvable
+.claude-plugin/                also generated
+├── plugin.json                serves skills/ship/ directly; makes the repo eval-resolvable
+└── marketplace.json           `/plugin marketplace add aafre/ship`
 
 packages/cli/                 v0.2, in progress: TypeScript CLI (`ship plan|run|status`), no
                                runtime dependencies. Adapters for Claude/Codex, git worktree +
@@ -380,7 +396,7 @@ An honest one. ship loses rows.
 | Enforces test-first discipline | ❌ | ❌ | ✅ | ❌ |
 | Deterministic gate (blocks on failure) | ❌ prompt-layer | ❌ | ❌ | ❌ |
 | Empirical benchmark published | ❌ not yet | — | ➖ some | ❌ |
-| Setup cost | copy 7 files | none | varies | high |
+| Setup cost | one command | none | varies | high |
 | Works across languages without configuration | ✅ | ✅ | ➖ | ➖ |
 
 If you want test-first enforced, pair ship with a TDD skill — ship governs *how the work is

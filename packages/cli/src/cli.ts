@@ -72,7 +72,7 @@ async function main(argv: string[]): Promise<number> {
   if (command === "plan") {
     const [plansRoot, runId, planInputPath] = rest;
     if (!plansRoot || !runId || !planInputPath) {
-      console.error("usage: ship-cli plan <plansRoot> <runId> <planInputJsonPath>");
+      console.error("usage: ship plan <plansRoot> <runId> <planInputJsonPath>");
       return 1;
     }
     const input = JSON.parse(readFileSync(planInputPath, "utf8")) as PlanInput;
@@ -84,7 +84,7 @@ async function main(argv: string[]): Promise<number> {
   if (command === "run") {
     const [runDir, tasksPath] = rest;
     if (!runDir || !tasksPath) {
-      console.error("usage: ship-cli run <runDir> <tasksJsonPath>");
+      console.error("usage: ship run <runDir> <tasksJsonPath>");
       return 1;
     }
     const repoRoot = process.cwd();
@@ -141,7 +141,7 @@ async function main(argv: string[]): Promise<number> {
   if (command === "status") {
     const [runDir] = rest;
     if (!runDir) {
-      console.error("usage: ship-cli status <runDir>");
+      console.error("usage: ship status <runDir>");
       return 1;
     }
     const state = readState(join(runDir, "state.json"));
@@ -149,7 +149,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  console.error("usage: ship-cli <plan|run|status> ...");
+  console.error("usage: ship <plan|run|status> ...");
   return 1;
 }
 

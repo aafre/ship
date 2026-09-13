@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Regenerates .claude/skills/ship, .claude/agents/ship-*.md, and
-// .claude-plugin/plugin.json from the canonical sources under skills/ship/.
+// .claude-plugin/{plugin,marketplace}.json from the canonical sources under skills/ship/.
 // `npm run check:drift` runs this into a temp directory and diffs it against
 // the checked-in copies; a hand-edit to a generated file fails that check
 // instead of silently drifting from the source of truth.
@@ -17,8 +17,17 @@ const PLUGIN_MANIFEST = {
     "Disciplined end-to-end engineering workflow: classify, recon, plan when it earns it, implement, verify with the repo's own commands, independent review, triage findings, report with evidence.",
   version: "0.2.0",
   author: { name: "aafre" },
-  skills: "./.claude/skills",
-  agents: ["./.claude/agents/ship-reviewer.md", "./.claude/agents/ship-verifier.md"],
+  // No `skills` override: the plugin root is the repo root, so Claude Code auto-discovers
+  // skills/ship/ (which carries its own agents/ dir). Listing .claude/skills too would
+  // register `ship` twice.
+  agents: ["./skills/ship/agents/ship-reviewer.md", "./skills/ship/agents/ship-verifier.md"],
+};
+
+// Lets `/plugin marketplace add aafre/ship` then `/plugin install ship@ship` work straight from GitHub.
+const MARKETPLACE_MANIFEST = {
+  name: "ship",
+  owner: { name: "aafre" },
+  plugins: [{ name: "ship", source: "./", description: PLUGIN_MANIFEST.description }],
 };
 
 function copyClean(src, dest) {
@@ -39,9 +48,10 @@ export function generate(outRoot) {
 
   mkdirSync(join(outRoot, ".claude-plugin"), { recursive: true });
   writeFileSync(join(outRoot, ".claude-plugin", "plugin.json"), JSON.stringify(PLUGIN_MANIFEST, null, 2) + "\n");
+  writeFileSync(join(outRoot, ".claude-plugin", "marketplace.json"), JSON.stringify(MARKETPLACE_MANIFEST, null, 2) + "\n");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   generate(repoRoot);
-  console.log("Generated .claude/skills/ship, .claude/agents/ship-*.md, .claude-plugin/plugin.json from skills/ship/.");
+  console.log("Generated .claude/skills/ship, .claude/agents/ship-*.md, .claude-plugin/{plugin,marketplace}.json from skills/ship/.");
 }

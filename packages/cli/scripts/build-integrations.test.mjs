@@ -15,7 +15,12 @@ test("generate() produces .claude/skills/ship, .claude/agents, and a valid plugi
 
     const plugin = JSON.parse(readFileSync(join(outRoot, ".claude-plugin", "plugin.json"), "utf8"));
     assert.equal(plugin.name, "ship");
-    assert.deepEqual(plugin.agents, ["./.claude/agents/ship-reviewer.md", "./.claude/agents/ship-verifier.md"]);
+    assert.equal(plugin.skills, undefined); // default skills/ dir; an override would register `ship` twice
+    assert.deepEqual(plugin.agents, ["./skills/ship/agents/ship-reviewer.md", "./skills/ship/agents/ship-verifier.md"]);
+
+    const marketplace = JSON.parse(readFileSync(join(outRoot, ".claude-plugin", "marketplace.json"), "utf8"));
+    assert.equal(marketplace.name, "ship");
+    assert.deepEqual(marketplace.plugins.map((p) => [p.name, p.source]), [["ship", "./"]]);
   } finally {
     rmSync(outRoot, { recursive: true, force: true });
   }

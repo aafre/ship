@@ -10,12 +10,19 @@ You talk to one agent. Subagents, worktrees, plans, contracts, and review happen
 
 ## Install
 
-Copy into any repo (or `~/.claude/` for all repos):
+Any agent the [`skills` CLI](https://github.com/vercel-labs/skills) supports:
 
+```bash
+npx skills add aafre/ship        # -g for every project, -a <agent> for one agent
 ```
-.claude/skills/ship/          SKILL.md + references/
-.claude/agents/               ship-reviewer.md, ship-verifier.md
-```
+
+Claude Code as a plugin (also registers the subagents): `/plugin marketplace add aafre/ship`,
+then `/plugin install ship@ship` (command becomes `/ship:ship`).
+
+By hand, copy this directory to wherever your agent discovers skills (`.claude/skills/`,
+`.agents/skills/`, `~/.claude/skills/`, …). Claude Code users also copy `agents/*.md` to
+`.claude/agents/` for native `ship-reviewer` / `ship-verifier` subagents; other hosts run the
+same role prompts in a fresh session (SKILL.md step 9 says how).
 
 Nothing else to configure. The skill discovers each repo's own build/test commands rather
 than assuming a language or toolchain, so it's portable as-is.
@@ -114,17 +121,19 @@ Bare requests without `/ship` trigger it too, when they're substantive code chan
 ## Files
 
 ```
-.claude/skills/ship/
+skills/ship/
   SKILL.md                        core workflow and decision logic
   README.md                       this file
+  agents/
+    ship-reviewer.md              independent fresh-context reviewer
+    ship-verifier.md              behavioural verifier (commands + browser)
   references/
     task-contract.md              contract fields, inference rules, persistence, resuming
     review-contract.md            reviewer briefing, severity ladder, triage, specialist routing
     workflow-rules.md             implementation, verification, and completion detail
     parallelism.md                the fan-out test, DAG, work contracts, worktrees, integration
-.claude/agents/
-  ship-reviewer.md                independent fresh-context reviewer
-  ship-verifier.md                behavioural verifier (commands + browser)
+    verifier-contract.md          capability-aware verification, evidence, failure classes
+    pr-strategy.md                per-epic review → PR loop
 ```
 
 References load only when the relevant phase needs them, so a SMALL task costs SKILL.md and

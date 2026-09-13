@@ -1,0 +1,13 @@
+{
+  "name": "ship",
+  "owner": {
+    "name": "aafre"
+  },
+  "plugins": [
+    {
+      "name": "ship",
+      "source": "./",
+      "description": "Disciplined end-to-end engineering workflow: classify, recon, plan when it earns it, implement, verify with the repo's own commands, independent review, triage findings, report with evidence."
+    }
+  ]
+}

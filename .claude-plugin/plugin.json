@@ -5,9 +5,8 @@
   "author": {
     "name": "aafre"
   },
-  "skills": "./.claude/skills",
   "agents": [
-    "./.claude/agents/ship-reviewer.md",
-    "./.claude/agents/ship-verifier.md"
+    "./skills/ship/agents/ship-reviewer.md",
+    "./skills/ship/agents/ship-verifier.md"
   ]
 }

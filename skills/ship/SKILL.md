@@ -209,10 +209,22 @@ If a check doesn't exist in this repo, say so rather than implying coverage you 
 For anything non-trivial, a **fresh-context** reviewer looks at the change. You are not the
 sole reviewer of your own work — you already believe it's correct, and that belief is the bug.
 
-Use the `ship-reviewer` subagent. Give it only: objective, acceptance criteria, key
-constraints, the diff (or changed-file paths), and relevant test results. Do not give it your
-reasoning or your justification for the choices you made — reconstructing that independently
-is exactly its job.
+The reviewer is `ship-reviewer`. Dispatch it through whatever your host provides, in this
+order:
+
+1. A registered `ship-reviewer` subagent (Claude Code with the agents installed) — use it.
+2. Any other fresh-context mechanism — a subagent, a spawned session, `claude -p`,
+   `codex exec` — briefed with the role prompt at `agents/ship-reviewer.md` (relative to this
+   file) plus the inputs below.
+3. Neither available — do the work, but report the review as **pending**. A same-context
+   read of your own diff is not independent review and must not be labelled as one.
+
+The same rule applies to `ship-verifier` (`agents/ship-verifier.md`).
+
+Give the reviewer only: objective, acceptance criteria, key constraints, the diff (or
+changed-file paths), and relevant test results. Do not give it your reasoning or your
+justification for the choices you made — reconstructing that independently is exactly its
+job.
 
 It returns prioritized findings (P0 catastrophic/data loss → P3 real maintainability
 problems) or `PASS`. Severity ladder, finding format, and specialist routing:
