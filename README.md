@@ -1,492 +1,230 @@
-# ship: a senior-engineer workflow for any coding agent
+# ship
 
-> **ship turns an ordinary engineering request into a verified, independently reviewed change — without you orchestrating a single agent.**
+**Give your coding agent a workflow for making changes, checking them, and reviewing the diff.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Agent%20Skill-orange)](https://docs.claude.com/en/docs/claude-code/skills)
-[![Runtime deps](https://img.shields.io/badge/runtime%20deps-none-brightgreen)](#repository-layout)
-[![Status](https://img.shields.io/badge/status-v0.1%20early-yellow)](#project-status)
+[![Status: early](https://img.shields.io/badge/status-early-yellow)](#project-status)
+[![Agent Skills](https://img.shields.io/badge/format-Agent%20Skills-blue)](https://agentskills.io/specification)
 
-You say *"add refresh-token rotation."* ship classifies the task, recons only the code that
-matters, plans when a plan earns its keep, implements, runs the repo's **own** test commands,
-sends the diff to a reviewer that never saw its reasoning, verifies each finding before
-fixing it, re-checks, and reports with evidence.
+ship is an agent skill that scales the workflow to the task: a small fix gets a targeted
+check; substantive changes get planning when needed, verification, and fresh-context review
+when the host supports it.
 
-No YAML contracts to write. No agents to pick. No "please run the tests" for the third time.
+- **Less orchestration to manage.** The agent sizes the work and chooses the steps.
+- **Checks grounded in your repo.** It discovers your test, lint, and build commands.
+- **A report you can inspect.** What changed, what ran, review findings, and what remains unverified.
 
-**Why ship?**
-- **Independent review by construction** — the reviewer gets the diff and the acceptance criteria, deliberately *not* the implementer's rationale. An agent that reads its own justification agrees with it.
-- **Evidence, not assertion** — a test is never reported as passing unless it ran and passed. Unverified is stated as unverified.
-- **Orchestration proportional to the task** — a typo fix spawns nothing. Eighteen independent adapters get worktrees. The decision is written down, not vibes.
+### What a completion report looks like
 
-[Quickstart](#quickstart) · [Which agents](#which-agents) · [How it works](#how-it-works) · [When not to use it](#when-to-use-ship) · [Design principles](#design-principles)
+Illustrative example — not a captured run or benchmark:
 
----
+```text
+Request: Add cursor pagination to the users API
 
-## Why this exists
-
-Agentic coding fails in two opposite directions, and most tooling only fixes one.
-
-**Under-engineering:** the agent writes plausible code, declares victory, and never runs
-anything. You find out in CI, or in production.
-
-**Over-engineering:** the agent spawns six subagents to rename a variable, each
-re-discovering the same architecture, each burning context, and the "review" is the same
-model congratulating itself in a fresh window.
-
-```
-Typical agent loop              ship
-
-request                         request
-   ↓                               ↓
-edit files                      classify size ─────► SMALL: inspect → edit → check → done
-   ↓                               ↓
-"Done! ✅"                      recon (targeted) → plan (if it earns one)
-                                   ↓
-                                implement → run the repo's real commands
-                                   ↓
-                                independent review (fresh context, no rationale)
-                                   ↓
-                                verify each finding → fix confirmed only → re-check
-                                   ↓
-                                report: what changed, what ran, what's unverified
+Changed: GET /users now accepts a cursor, reusing the /orders pattern.
+Checks:  pytest -q tests/api/test_users.py → 14 passed
+         ruff check src/ → clean
+         mypy src/api → clean
+Review:  Missing limit=0 test found; confirmed, fixed, and re-checked.
+Pending: Integration suite needs a live database; not run.
 ```
 
-The insight is that **the orchestration should scale with the task, and the reviewer must be
-structurally unable to inherit the implementer's confidence.** Everything else follows.
-
----
-
-## Proof
-
-ship is a prompt-layer skill, so the honest evidence is structural, not a latency benchmark.
-Every number below is reproducible from the repo in one command.
-
-| Metric | Value | How to reproduce |
-|---|---:|---|
-| Loaded on every trigger (`SKILL.md`) | **13.9 KB** | `wc -c .claude/skills/ship/SKILL.md` |
-| Loaded **only when a phase needs it** (5 references) | **26.5 KB** | `wc -c .claude/skills/ship/references/*.md` |
-| Deferred share of skill text | **66%** | ratio of the two above |
-| Reviewer / verifier context | **separate** | own agent, own window — never inherits the transcript |
-| Runtime dependencies | **0** | no scripts, no install, no language assumptions |
-| Frontmatter validation | **passes** | `python skill-creator/scripts/quick_validate.py .claude/skills/ship` |
-
-A SMALL task — a typo, a one-file fix — costs `SKILL.md` and nothing else. The parallelism
-rules, the worktree procedure, and the review contract stay on disk until a task actually
-reaches those phases. That is what progressive disclosure buys, and it is why the skill can
-afford to be opinionated in depth without taxing every trivial request.
-
-**What is *not* proven yet:** no head-to-head defect-detection benchmark against a bare
-agent, no token-usage measurement across a task corpus. The eval suite that would measure
-the first of those now exists in [`evals/`](evals/) — ten cases, each run with and without
-the plugin so the headline number is uplift — but it has not been run yet: `claude plugin
-eval` is in early access. See [Project status](#project-status). Claims in this README are
-limited to what the files themselves demonstrate.
-
----
+[Get started](#quickstart) · [Compatibility](#which-agents) · [Workflow](#how-it-works) · [Evidence and limits](#project-status) · [Contribute](#contributing)
 
 ## Quickstart
 
-**Any agent** — Claude Code, Codex, Cursor, Copilot, Cline, OpenCode, Gemini CLI, and the
-rest of the [70+ the `skills` CLI knows](https://github.com/vercel-labs/skills):
+You need a coding agent that supports skills, plus Node.js/npm for the installer.
+From the project where you want to use ship:
 
 ```bash
-npx skills add aafre/ship            # into this project; add -g for every project
-npx skills add aafre/ship -a codex   # one agent only
+npx skills add aafre/ship
 ```
 
-**Claude Code, as a plugin** (also registers the `ship-reviewer` / `ship-verifier` subagents):
+Follow the installer prompts to select your agent. Then ask your agent:
 
+```text
+Use the ship skill to add cursor pagination to the users API.
 ```
+
+The skill is designed to trigger on substantive engineering requests. Explicitly naming
+it makes the first try easier to verify. Start with a small change whose checks you can run.
+See [compatibility](#which-agents) for the difference between installing, loading, and running it.
+
+<details>
+<summary>Claude Code plugin — includes registered reviewer and verifier agents</summary>
+
+Run inside Claude Code:
+
+```text
 /plugin marketplace add aafre/ship
 /plugin install ship@ship
+/ship:ship Add cursor pagination to the users API
 ```
 
-Installed as a plugin the command is namespaced: `/ship:ship <request>`. Bare requests
-trigger it either way.
+Use this route for the native `ship-reviewer` and `ship-verifier` subagents.
 
-**By hand** — it's Markdown. Copy `skills/ship/` to wherever your agent discovers skills
-(`.claude/skills/`, `.agents/skills/`, `~/.claude/skills/`, …). Claude Code users also copy
-`skills/ship/agents/*.md` to `.claude/agents/` to get the reviewer and verifier as native
-subagents; every other host runs those same role prompts in a fresh session instead.
+</details>
 
-Then, in your agent:
-
-```
-/ship Add cursor pagination to the users API
-```
-
-Or just ask normally — the skill triggers on substantive change requests on its own:
-
-```
-Fix the race condition in the ingestion worker
-```
-
-For MEDIUM/LARGE work, once a plan is approved, the skill routes the mechanical parts
-(rendering `tasks.json`, running the worker graph, checking progress) through the local CLI
-in [`packages/cli`](packages/cli) when it's built — `ship plan`, `ship run <run-dir>
-tasks.json`, `ship status <run-dir>` — instead of hand-rolling worktrees and state tracking in
-the conversation. If it isn't built, the skill falls back to doing all of that by hand; you
-never have to choose one path yourself. To get a `ship` command on your PATH:
+<details>
+<summary>Install for one agent, globally, or by hand</summary>
 
 ```bash
-cd ship/packages/cli && npm ci && npm run build && npm link
+npx skills add aafre/ship -a codex
+npx skills add aafre/ship -g
 ```
 
-Expected shape of what comes back:
+The first targets Codex; the second installs globally. See the
+[skills CLI documentation](https://github.com/vercel-labs/skills) for supported agents and options.
 
-```
-Added cursor pagination to GET /users, following the shape already used by
-/orders (src/api/users.py:88, src/api/pagination.py reused unchanged).
-Callers that pass no cursor get the previous behaviour.
+For a manual install, copy [`skills/ship/`](skills/ship/) into your agent's skill discovery
+directory, such as `.agents/skills/ship/` or `.claude/skills/ship/`. Claude Code users can
+also copy `skills/ship/agents/*.md` into `.claude/agents/` to register the review roles.
+Other hosts need a fresh-context session to perform independent review.
 
-Checks: pytest -q tests/api/test_users.py → 14 passed
-        ruff check src/ → clean
-        mypy src/api → clean
-Review: ship-reviewer returned 1 finding (P2, missing test for limit=0);
-        confirmed and fixed, test added.
-Unverified: integration suite not run (needs a live DB).
-```
+</details>
 
----
+<details>
+<summary>Optional local CLI for larger task graphs — experimental</summary>
 
-## Which agents
-
-**What:** ship is one Markdown package in the
-[Agent Skills](https://agentskills.io/specification) format — `skills/ship/SKILL.md` plus its
-`references/` and `agents/`. The `skills` CLI drops that package into each agent's own
-discovery directory (`.claude/skills`, `.agents/skills`, `.pi/skills`, `.cursor/skills`,
-…); the agent loads it like any other skill. Claude Code additionally gets a plugin
-marketplace, because that registers the reviewer and verifier as native subagents.
-
-**Why:** the workflow doesn't depend on the model or the host — it depends on the repo. The
-only host-specific step is independent review, and SKILL.md step 9 handles that with an
-ordered fallback: a registered `ship-reviewer` subagent → any fresh-context session (a
-subagent, `claude -p`, `codex exec`) briefed with `agents/ship-reviewer.md` → if neither
-exists, the review is reported as **pending**, never faked. So on a host with no subagents
-you still get classification, recon, real verification, and honest reporting; you lose
-independent review and are told so.
-
-Support is stated in three tiers, because "the file landed" and "the agent runs it" are
-different claims:
-
-| Tier | Agents | Evidence |
-|---|---|---|
-| **Runs end-to-end** | Claude Code | plugin + `skills` CLI install; native subagents; this repo is developed with it |
-| **Loads the skill** (verified headless: agent lists `ship` with its description) | Codex, OpenCode, Pi (global scope: `-g -a pi`) | `codex exec`, `opencode run`, `pi -p` in a scratch repo after `npx skills add aafre/ship` |
-| **Installs** (file lands in the agent's skills dir; loading unverified here) | the other ~75 the `skills` CLI supports — Antigravity, Cursor, Copilot, Gemini CLI, Cline, Windsurf, Kiro, Goose, Amp, Droid, Roo, Junie, Zed, … | `npx skills add aafre/ship -a '*'` writes 78 copies; run `npx skills add aafre/ship -l` for the current list |
-
-Per-agent notes: Pi's headless mode did not pick up a project-scope `.pi/skills/ship` in
-testing — install globally (`-g`) or pass `--skill .pi/skills/ship`. Codex and Antigravity
-share `.agents/skills/`. Hosts without subagents fall back as described above.
-
-To move an agent up a tier, run the `Loads the skill` check in a scratch repo and open a PR
-with the command and its output. Behavioural evals across hosts are tracked under
-[`evals/`](evals/); see [Project status](#project-status).
-
----
-
-## What it does
-
-**Sizes the task before touching it.** SMALL / MEDIUM / LARGE / VERY LARGE, judged by the
-diff it expects rather than the sentence it was given. The class picks the workflow. When
-it's a close call, it runs the *smaller* workflow and escalates if recon proves it wrong —
-escalation is cheap, over-orchestration isn't.
-
-**Recons by search, not by reading.** Greps the symbol, follows call sites, opens the nearest
-tests, and finds the analogous implementation already in the tree. That analogue is the
-highest-value artifact of recon: it hands over the conventions, the test style, and the
-abstractions to reuse, which is how the diff ends up looking like the rest of the codebase.
-
-**Runs the repository's own commands.** Discovers them from `AGENTS.md`, package scripts,
-`Makefile`/`justfile`/`Taskfile`, or CI config — before inventing any. It will not run
-`pytest` because a file ends in `.py` when the repo drives tests through `make test`. Checks
-run cheapest-first and stop at the first failure.
-
-**Reviews with a reviewer that can't cheat.** `ship-reviewer` receives objective, acceptance
-criteria, constraints, out-of-scope, the diff, and the test results. It does not receive the
-implementer's reasoning. It returns P0–P3 findings with evidence and a reproduction step, or
-`PASS` — and `PASS` is documented as a good outcome, so it isn't pressured to manufacture
-findings.
-
-**Treats findings as hypotheses.** Each material finding is reproduced or logically confirmed
-before anything is changed. Findings that contradict the acceptance criteria, contradict the
-repo's architecture, demand out-of-scope work, or rest on a misreading get rejected with a
-one-line reason. Blindly applying reviewer suggestions is how a working change becomes a
-broken one.
-
-**Verifies behaviour when reading isn't enough.** `ship-verifier` runs the real commands or
-drives the actual UI in a browser, and reports what it observed. It is explicitly forbidden
-from modifying source — it verifies, it doesn't fix.
-
-**Parallelizes only when parallelism is real.** Five conditions must all hold before a second
-implementation agent exists. Otherwise: sequential, which is usually right.
-
----
-
-## How it works
-
-```mermaid
-flowchart TD
-    R[Request] --> C{Classify}
-    C -->|SMALL| S[inspect → implement → targeted check]
-    C -->|MEDIUM| M[recon → plan → implement]
-    C -->|LARGE / VERY LARGE| L[recon → plan → DAG → worktrees → integrate]
-    S --> V[Deterministic verification<br/>repo's own commands, cheapest first]
-    M --> V
-    L --> V
-    V --> RV[ship-reviewer<br/>fresh context, no rationale]
-    RV -->|PASS| D[Report with evidence]
-    RV -->|findings| T{Verify each finding}
-    T -->|rejected, with reason| D
-    T -->|confirmed| F[Fix → re-run narrowest check]
-    F --> D
-```
-
-Three subagents, used conditionally — never by default:
-
-| Agent | Used when | Gets | Returns |
-|---|---|---|---|
-| **Explore** (built-in) | the answer needs a wide fan-out and you want the conclusion, not the files | one narrow bounded question | paths, patterns, constraints, tests, risks, unknowns |
-| **ship-reviewer** | any non-trivial change; always for auth/money/migrations/concurrency regardless of size | criteria + diff + test results | P0–P3 findings with evidence, or `PASS` |
-| **ship-verifier** | "it reads correctly" isn't sufficient evidence — UI and end-to-end paths | criteria + how to run | observed behaviour, per criterion |
-
-Specialist review is routed by **what the diff touches**, not by task size. Security review
-when it touches auth, secrets, crypto, query construction, shell execution, deserialization,
-file paths, or permissions. Performance review when it touches hot paths, query loops,
-streaming, caching, or concurrency. One specialist when warranted — not three on every diff.
-
----
-
-## Real-world example
-
-**Goal:** *"Migrate the 18 provider adapters from interface V1 to V2."*
-
-This is the case where naive agent tooling fans out eighteen ways and returns eighteen
-different interpretations of V2. ship's parallelism rules handle it in order:
-
-1. **Classify** → VERY LARGE. Mechanical, many isolated units.
-2. **Freeze the interface first.** The V2 definition is settled in one place, by one agent,
-   before anything is parallelized. An interface that is still moving cannot be built against.
-3. **Migrate adapter #1 yourself.** That first unit is the template — it proves the migration
-   works, surfaces the surprises, and becomes the worked example every worker receives.
-   Fanning out before doing one is how you get N different wrong answers.
-4. **Build the DAG.** `A: freeze + reference adapter` → `B,C,D: adapters 2–18 in three
-   groups` → `E: remove the V1 shim`. Only nodes whose dependencies are complete execute.
-5. **Fan out into isolated worktrees**, one compact Work Contract each: objective, its slice
-   of the acceptance criteria, the files it owns, what's already settled (*don't redo, don't
-   change*), the commands to run, the output shape required. No conversation transcript, no
-   re-exploring the repo.
-6. **Integrate deliberately** — merge in dependency order, run affected tests after *each*
-   merge, not just the last. The bug you're hunting is the one caused by combining two
-   individually-correct changes.
-7. **Review the integrated diff**, not the individual worker diffs. Seams are where the
-   defects live.
-
-The inverse case is written down just as explicitly. *"Refactor the core transaction model
-used throughout the system"* is listed in `references/parallelism.md` under **when fan-out
-clearly does not apply** — everything depends on the same shape, so architecture is settled
-first and the core change lands before any mechanical call-site work is distributed.
-
----
-
-## When to use ship
-
-**Use it for:** features, bug fixes, refactors, migrations, performance work, API and schema
-changes, test work, reliability fixes, security-sensitive changes, "implement this issue."
-
-**It deliberately does not trigger on:** questions about code, explanations, brainstorming,
-code reading with no modification, or one-line edits where the workflow costs more than it
-returns. If it fires on something trivial anyway, the SMALL path collapses to
-inspect → edit → check, which is what you'd have done by hand.
-
-**It does not replace:**
-- a test framework — it runs *yours*
-- TDD discipline, if that's your practice (it updates tests alongside behaviour; it does not enforce test-first)
-- CI — it's a local workflow, not a pipeline
-- code review by humans, on changes where humans should look
-- linters, type checkers, or security scanners — it invokes them, it isn't one
-
----
-
-## Design principles
-
-**Evidence over assertion.** Never claim a test passed unless it ran and passed in-session.
-"I didn't run the integration suite" is a fine thing to say; implying you did is not. Anything
-unverified is named as unverified in the final report.
-
-**The reviewer must not inherit the implementer's confidence.** Independence is structural,
-not aspirational — it comes from withholding the rationale, not from asking nicely for
-scepticism.
-
-**Orchestration proportional to the task.** Agents are used where independence, context
-isolation, specialization, or genuine concurrency creates measurable value. Everywhere else
-they are cost. Multi-agent theatre is worse than a single competent agent.
-
-**Context is the budget.** Paths not contents, summaries not transcripts, diffs not files,
-filtered output not raw logs. One agent maps an area and the others are told what it found.
-
-**Repository state is the source of truth.** The workflow restarts from git, not from a
-conversation. LARGE work persists its contract and plan so a fresh agent resumes from durable
-artifacts.
-
-**The smallest correct change.** YAGNI, KISS, DRY and SOLID applied pragmatically. No
-abstraction for a hypothetical second caller. No drive-by refactors. If the plan is longer
-than the diff it describes, the plan is wrong.
-
----
-
-## Trade-offs
-
-Stated plainly, because a workflow that only lists its strengths isn't one you can plan around.
-
-**It is slower than a bare agent on medium tasks.** Recon, review, and finding-verification
-cost wall-clock time. The trade is fewer defects reaching you. On genuinely small changes the
-skill collapses to near-zero overhead precisely because that trade stops being worth it.
-
-**Review quality is bounded by the diff's legibility.** A reviewer given only the diff and
-the criteria catches contract violations, edge cases, and missed call sites well. It catches
-"this contradicts an undocumented decision made three sprints ago" poorly. That's a real
-limit of context isolation, and it's the price of independence.
-
-**Classification is a judgement call, not a computation.** It can be wrong. The mitigation is
-directional: when torn, run the smaller workflow and escalate. Under-orchestrating recovers
-cheaply; over-orchestrating burns context you can't get back.
-
-**No enforcement.** This is a prompt-layer skill. It shapes behaviour strongly, but nothing
-here is a hard gate — unlike a CI check, which is why it should sit alongside CI and not
-instead of it.
-
-**No empirical benchmark yet.** The structural claims in [Proof](#proof) are reproducible.
-The behavioural ones — fewer defects, less context — are design intent, honestly labelled as
-such until an eval harness measures them.
-
----
-
-## Security and privacy
-
-- **Nothing leaves your machine.** The skill is Markdown. There is no telemetry, no network
-  call, no phone-home. Whatever your Claude Code installation already sends is unchanged by
-  installing this.
-- **No executable payload in the skill itself.** No scripts, no post-install hooks, no
-  dependencies to audit — `.claude/` is nine Markdown files, generated from `skills/ship/`
-  (see [Repository layout](#repository-layout)), and short enough to read end to end. The
-  optional `packages/cli/` companion (v0.2, in progress) is real TypeScript with no runtime
-  dependencies of its own — audit it the way you'd audit any small Node CLI.
-- **`ship-reviewer` is instructed not to modify files**, and is scoped to `Read, Grep, Glob,
-  Bash`; this is an instruction, not a filesystem guarantee, because Bash can write files.
-- **`ship-verifier` is instructed not to modify source**, and is scoped to verification and
-  browser tools. Note this one is an instruction, not a tool-level guarantee: it holds `Bash`,
-  which it needs to run your test commands.
-- **Security review is routed automatically** when a diff touches auth, authorization,
-  secrets, crypto, user-controlled file handling, query construction, shell or process
-  execution, deserialization, network boundaries, or permissions.
-- **No compliance claims.** No SOC 2, no certification, no audit. It's a workflow skill.
-
----
-
-## Repository layout
-
-```
-skills/ship/                  canonical source — edit here, never under .claude/ directly
-├── SKILL.md                  core workflow + task classification (always loaded on trigger)
-├── README.md                 skill-local docs
-├── agents/
-│   ├── ship-reviewer.md      independent fresh-context reviewer (read-only tools)
-│   └── ship-verifier.md      behavioural verifier (repo commands + browser)
-└── references/                progressive disclosure — loaded per phase, not up front
-    ├── task-contract.md        contract fields, inference rules, persistence, resuming
-    ├── review-contract.md      reviewer briefing, P0–P3 ladder, triage, specialist routing
-    ├── verifier-contract.md    capability-aware verification model, evidence, failure classes
-    ├── workflow-rules.md       implementation, verification, completion, and coding-contract detail
-    └── parallelism.md          the fan-out test, DAG, work contracts, worktrees, integration
-
-.claude/                      generated copy — `cd packages/cli && npm run build:integrations`
-├── skills/ship/               regenerates this from skills/ship/; check:drift catches hand-edits
-└── agents/
-.claude-plugin/                also generated
-├── plugin.json                serves skills/ship/ directly; makes the repo eval-resolvable
-└── marketplace.json           `/plugin marketplace add aafre/ship`
-
-packages/cli/                 v0.2, in progress: TypeScript CLI (`ship plan|run|status`), no
-                               runtime dependencies. Adapters for Claude/Codex, git worktree +
-                               integrate-branch delivery, capability-aware verification. See
-                               docs/ship-v0.2/plan.md. SKILL.md routes through it when built,
-                               falls back to the v0.1 prompt-only path otherwise.
-
-evals/                        10 behavioural cases + validate.py — see evals/README.md
-```
-
----
-
-## Comparison
-
-An honest one. ship loses rows.
-
-| | ship | Bare Claude Code | TDD-first skill suites | Hand-rolled multi-agent |
-|---|:---:|:---:|:---:|:---:|
-| Adapts orchestration to task size | ✅ | ➖ implicit | ➖ | ❌ usually fixed |
-| Independent review without the author's rationale | ✅ | ❌ | ➖ varies | ➖ varies |
-| Reviewer findings verified before being applied | ✅ | ❌ | ❌ | ❌ |
-| Uses the repo's own test commands, not assumed ones | ✅ | ➖ often assumed | ✅ | ➖ |
-| Enforces test-first discipline | ❌ | ❌ | ✅ | ❌ |
-| Deterministic gate (blocks on failure) | ❌ prompt-layer | ❌ | ❌ | ❌ |
-| Empirical benchmark published | ❌ not yet | — | ➖ some | ❌ |
-| Setup cost | one command | none | varies | high |
-| Works across languages without configuration | ✅ | ✅ | ➖ | ➖ |
-
-If you want test-first enforced, pair ship with a TDD skill — ship governs *how the work is
-orchestrated and verified*, not whether you write the test first. If you want a hard gate,
-that's CI's job, and ship is designed to arrive at CI with the checks already green.
-
----
-
-## Project status
-
-**v0.1 — early, usable, unbenchmarked.**
-
-| | |
-|---|---|
-| Core workflow (classify → recon → implement → verify → review → triage → report) | stable |
-| `ship-reviewer`, `ship-verifier` | stable |
-| Progressive disclosure across 5 references | stable |
-| Parallelism / worktree guidance | written, lightly exercised |
-| Eval suite ([`evals/`](evals/), 10 cases, with/without ablation) | **written, not yet run** — blocked on `claude plugin eval` early access |
-| Published benchmark numbers | **not built** |
-| Design-scenario coverage | walked through 7 scenarios (trivial fix, feature, security-sensitive change, parallelizable migration, non-parallelizable refactor, reviewer false positive, context pressure) — a design review, not an empirical result |
-| `packages/cli/` (v0.2) | unit/fixture-tested; **one recorded live run, Claude host/Claude worker, single small task** — see [`docs/ship-v0.2/smoke-log.md`](docs/ship-v0.2/smoke-log.md). That run took four attempts, each surfacing and fixing a real bug fixture tests couldn't reach (a Windows spawn failure, stale git worktree state, a silently false "integrated" claim, and uncommitted-but-correct work). Codex-worker and multi-task/manual-task runs are **not yet run**. |
-
-**Roadmap, in order of usefulness:**
-1. Live smoke coverage for the Codex adapter and a multi-task/manual-task run — the Claude/single-small-task path is now proven; the rest of the matrix isn't.
-2. Pilot and calibrate the suite in [`evals/`](evals/), so the behavioural claims become measured claims.
-3. Defect-detection comparison against a bare agent on a seeded-bug corpus.
-4. Token-usage measurement per task class.
-5. A worked LARGE example in a real multi-package repo.
-
-Issues and counter-examples are more valuable than stars right now — particularly cases where
-it over-orchestrates a small task or under-verifies a risky one.
-
----
-
-## Contributing
-
-`skills/ship/` is the canonical source; `.claude/skills/ship/` and `.claude/agents/` are
-generated copies checked into the repo so Quickstart still needs no build step.
+The Markdown skill works without building the companion CLI. When available, the skill
+can use `ship plan`, `ship run`, and `ship status` for task graphs and worktree management.
+The CLI requires Node.js 22 or later and is built from source:
 
 ```bash
 git clone https://github.com/aafre/ship.git
-# edit skills/ship/SKILL.md or skills/ship/references/ (never .claude/skills/ directly)
-cd packages/cli && npm run build:integrations   # regenerates .claude/skills, .claude/agents, plugin.json
-npm run check:drift                              # fails if a generated copy was hand-edited instead
-python path/to/skill-creator/scripts/quick_validate.py .claude/skills/ship
+cd ship/packages/cli
+npm ci
+npm run build
+npm link
 ```
 
-Guidelines that keep it coherent:
-- **`SKILL.md` stays under ~250 lines.** Detail belongs in `references/`, loaded per phase.
-- **New rules need a failure they prevent.** A rule that doesn't change an outcome is context tax.
-- **Don't add a reference file for a paragraph.** Four is close to the right number.
-- **No fabricated evidence.** Numbers in the README must be reproducible with a stated command.
+See the [CLI plan](docs/ship-v0.2/plan.md) and [recorded smoke run](docs/ship-v0.2/smoke-log.md)
+before relying on it for larger work. It is not a published npm package.
+
+</details>
+
+## Why ship is different
+
+| Engineering problem | ship's approach |
+|---|---|
+| A tiny change gets a large workflow | Classify first; keep small, low-risk work short. |
+| Checks are guessed or skipped | Discover repository commands and report what actually ran. |
+| Review inherits the author's explanation | Brief a fresh reviewer with criteria, diff, and test results; omit the author's rationale. |
+| Reviewer suggestions introduce new bugs | Confirm findings before applying fixes, then re-check. |
+| Every task loads every procedure | Keep phase-specific guidance in reference files loaded when needed. |
+
+These are workflow instructions, not enforced guarantees. Independent review needs a
+fresh-context host capability; otherwise the report must mark review **pending**.
+Deferred reference loading reduces upfront instruction text; it does not mean zero context cost.
+
+## How it works
+
+1. **Size and inspect.** Classify the change, find related code and tests, and reuse repo conventions.
+2. **Plan when useful.** Set acceptance criteria; split work only when tasks are independent.
+3. **Implement and check.** Make the change and run the repository's relevant commands.
+4. **Review substantive changes.** Use fresh context; sensitive changes warrant review even when small.
+5. **Confirm and report.** Verify findings, fix confirmed issues, re-check, and name remaining gaps.
+
+Small, low-risk changes collapse to inspect → edit → check → report. Larger work can use
+dependency graphs and isolated worktrees after shared interfaces are settled.
+
+For the exact rules, read the [core skill](skills/ship/SKILL.md),
+[review contract](skills/ship/references/review-contract.md),
+[verification contract](skills/ship/references/verifier-contract.md), and
+[parallelism guidance](skills/ship/references/parallelism.md).
+
+## Which agents
+
+The package uses the [Agent Skills format](https://agentskills.io/specification).
+Installation support does not establish end-to-end behavior. Evidence currently documented in this repo:
+
+| Host | Documented support | Limit |
+|---|---|---|
+| Claude Code | Plugin integration and project development use; one recorded CLI smoke run | The CLI run covers a single small task with a Claude worker. |
+| Codex, OpenCode, Pi | Skill loading reported in headless checks | Loading is not an end-to-end workflow test. |
+| Other hosts supported by the skills CLI | Installation path available | Loading and behavior need host-specific verification. |
+
+Pi's reported loading check used global installation (`-g -a pi`); project-scope discovery
+needed an explicit `--skill .pi/skills/ship` in that test. Agent behavior can vary by version.
+
+Without a registered reviewer, ship's instructions fall back to another fresh-context
+session. Without either capability, independent review remains pending.
+Share your host version, install command, and observed result in an
+[issue](https://github.com/aafre/ship/issues) to improve this matrix.
+
+## When to use ship
+
+Use it for features, bug fixes, refactors, migrations, API changes, and reliability work
+where the agent should own implementation through verification.
+
+For explanations, brainstorming, or code reading, the full workflow is unnecessary.
+ship complements your tests, CI, and human review. It does not enforce test-first development
+or replace any of those checks. Extra review steps can add time and model usage.
+
+## Project status
+
+**Early, usable for experimentation, and unbenchmarked.** The skill and optional CLI have
+different levels of evidence:
+
+| Area | Evidence available |
+|---|---|
+| Skill workflow and review roles | Inspectable instructions in [`skills/ship/`](skills/ship/). |
+| Behavioral evaluations | [Ten cases and a validator](evals/README.md); no published outcome comparison yet. |
+| Optional CLI | Unit/fixture tests plus [one recorded live smoke run](docs/ship-v0.2/smoke-log.md). |
+| Codex-worker and multi-task CLI execution | The smoke log records these as not yet run. |
+| Defect reduction, speed, or token savings | Not established by a published benchmark. |
+
+The live smoke run took four attempts and exposed bugs that fixture tests missed.
+Read the log for scope and fixes. A successful small run does not establish reliability
+for a large migration. Fresh context also does not guarantee that a reviewer catches every defect.
+
+Next priorities: expand live host/task coverage, run and calibrate the behavioral evals,
+publish a reproducible with/without comparison, and capture a real worked example.
+
+## Security and privacy
+
+The skill itself is Markdown. Your coding agent still executes commands and may send code
+and prompts to its configured model provider. Review your host's permissions and data settings.
+
+Reviewer and verifier roles are instructed not to modify source; those instructions are
+not a filesystem sandbox. The optional CLI executes workers and manages git worktrees;
+inspect it and use normal repository safeguards before running it.
+
+## Contributing
+
+Useful contributions include reproducible failures, host compatibility reports, eval results,
+and small fixes. [Open an issue](https://github.com/aafre/ship/issues) with the request,
+expected behavior, actual behavior, agent/version, and relevant output. Remove secrets first.
+
+Edit **`skills/ship/`**, the canonical source. `.claude/` and `.claude-plugin/` contain
+generated integrations. With Node.js 22 or later:
+
+```bash
+git clone https://github.com/aafre/ship.git
+cd ship/packages/cli
+npm ci
+# Edit the canonical files under ../../skills/ship/.
+npm run build:integrations
+npm run check:drift
+# For CLI changes:
+npm test
+```
+
+Keep the core skill focused; put phase-specific detail in references. Explain which failure
+a new rule prevents. Include checks run and limitations with your PR. See
+[`evals/README.md`](evals/README.md) for behavioral evaluation setup.
+
+| Path | Purpose |
+|---|---|
+| [`skills/ship/`](skills/ship/) | Canonical skill, review roles, and reference guidance |
+| [`.claude/`](.claude/) / [`.claude-plugin/`](.claude-plugin/) | Generated host integrations |
+| [`packages/cli/`](packages/cli/) | Optional TypeScript CLI and tests |
+| [`evals/`](evals/) | Behavioral cases and structural validator |
+| [`docs/ship-v0.2/`](docs/ship-v0.2/) | CLI design and live-run evidence |
+
+If ship helps you complete a real change, a star helps others discover it.
+A reproducible report helps make the next run better.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE).
